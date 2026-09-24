@@ -173,7 +173,7 @@ service cloud.firestore {
         (resource.data.shopId != null && inShop(resource.data.shopId))
       );
       allow create: if (isSuperAdmin() || isGalleryAdmin() || isTechnician())
-        && inGallery(request.resource.data.galleryId);
+        && hasGalleryAccess(request.resource.data.galleryId);
       allow update: if isActive() && (isSuperAdmin() ||
         ((isGalleryAdmin() || isTechnician()) && inGallery(resource.data.galleryId)));
       allow delete: if false;

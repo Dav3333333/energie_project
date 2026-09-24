@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   subscribeShop,
   subscribeShopsByGallery,
+  subscribeAllShops,
   subscribeShopsByIds,
 } from '../services/shopsService';
 
@@ -28,6 +29,8 @@ export function useShopsByGallery(galleryId, filters = {}) {
     if (!galleryId) return undefined;
     const unsub = subscribeShopsByGallery(galleryId, filters, (items) => {
       qc.setQueryData(key, items);
+    }, (error) => {
+      console.error('[shops] Impossible de charger les boutiques de la galerie:', error);
     });
     return unsub;
   }, [qc, galleryId, JSON.stringify(filters)]);
@@ -35,6 +38,24 @@ export function useShopsByGallery(galleryId, filters = {}) {
     queryKey: key,
     queryFn: () => Promise.resolve([]),
     enabled: !!galleryId,
+    staleTime: Infinity,
+  });
+}
+
+export function useAllShops(filters = {}, enabled = true) {
+  const qc = useQueryClient();
+  const key = ['shops', 'all', filters];
+  useEffect(() => {
+    if (!enabled) return undefined;
+    const unsubscribe = subscribeAllShops(filters, (items) => qc.setQueryData(key, items), (error) => {
+      console.error('[shops] Impossible de charger les boutiques:', error);
+    });
+    return unsubscribe;
+  }, [qc, enabled, JSON.stringify(filters)]);
+  return useQuery({
+    queryKey: key,
+    queryFn: () => Promise.resolve([]),
+    enabled,
     staleTime: Infinity,
   });
 }

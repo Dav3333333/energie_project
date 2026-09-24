@@ -1,11 +1,36 @@
 import { useEffect } from 'react';
-import { X } from 'lucide-react';
+import { NavLink } from 'react-router-dom';
+import {
+  Activity, Bell, Building2, FileText, Gauge, Home, LogOut, Receipt,
+  Settings, ShoppingCart, Store, User, Users, Wrench, X, Zap,
+} from 'lucide-react';
+import { useAuth } from '@/features/auth/hooks/useAuth';
+import { getAllowedNavigationForRole } from '@/lib/permissions';
+
+const ICONS = {
+  '/dashboard': Home,
+  '/galleries': Building2,
+  '/shops': Store,
+  '/meters': Gauge,
+  '/readings': FileText,
+  '/energy-purchases': ShoppingCart,
+  '/alerts': Bell,
+  '/incidents': Wrench,
+  '/power-status': Zap,
+  '/reports': Activity,
+  '/invoices': Receipt,
+  '/users': Users,
+  '/settings': Settings,
+  '/profile': User,
+};
 
 /**
  * Tiroir latéral mobile. Ferme sur swipe-right, touche Escape, clic overlay.
  * Lock le scroll du body tant qu'il est ouvert.
  */
 export default function MobileDrawer({ open, onClose, children }) {
+  const { profile, signOut } = useAuth();
+  const items = getAllowedNavigationForRole(profile?.role);
   useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
@@ -52,9 +77,35 @@ export default function MobileDrawer({ open, onClose, children }) {
         </div>
         <div className="app-scroll h-[calc(100dvh-56px)] p-4">
           {children ?? (
-            <p className="text-sm text-[var(--c-text-muted)]">
-              Contenu du menu à définir à l&apos;ÉTAPE 3 selon le rôle.
-            </p>
+            <nav aria-label="Navigation secondaire" className="space-y-1">
+              {items.map(({ to, label }) => {
+                const Icon = ICONS[to] ?? Home;
+                return (
+                  <NavLink
+                    key={to}
+                    to={to}
+                    onClick={onClose}
+                    className={({ isActive }) => [
+                      'flex items-center gap-3 min-h-touch rounded-xl px-3 text-sm font-medium',
+                      isActive
+                        ? 'bg-brand-50 text-brand-700 dark:bg-sky-950 dark:text-brand-300'
+                        : 'text-[var(--c-text)] active:bg-slate-100 dark:active:bg-slate-700',
+                    ].join(' ')}
+                  >
+                    <Icon size={19} aria-hidden="true" />
+                    <span>{label}</span>
+                  </NavLink>
+                );
+              })}
+              <button
+                type="button"
+                onClick={() => { onClose(); signOut(); }}
+                className="flex items-center gap-3 min-h-touch w-full rounded-xl px-3 text-sm font-medium text-danger-dark active:bg-red-50"
+              >
+                <LogOut size={19} aria-hidden="true" />
+                <span>Se déconnecter</span>
+              </button>
+            </nav>
           )}
         </div>
       </aside>

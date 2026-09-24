@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useViewportMode } from '@/hooks/useViewportMode';
 import TopBar from './TopBar';
 import BottomNavigation from './BottomNavigation';
@@ -18,16 +19,18 @@ export default function AppShell({
   topBarActions = null,
   showDrawer = true,
 }) {
+  const navigate = useNavigate();
   const mode = useViewportMode();
   const isMobile = mode === 'mobile';
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const handleBack = onBack ?? (() => navigate(-1));
 
   return (
     <div className="flex flex-col min-h-dvh bg-[var(--c-bg)]">
       <TopBar
         title={title}
         showBack={showBack}
-        onBack={onBack}
+        onBack={handleBack}
         actions={topBarActions}
         onMenuClick={showDrawer ? () => setDrawerOpen(true) : undefined}
       />
@@ -37,7 +40,9 @@ export default function AppShell({
       <main
         className={[
           'flex-1 app-scroll screen-pad',
-          isMobile ? 'above-bottomnav pt-4' : 'pt-6 pb-8',
+          isMobile
+            ? 'above-bottomnav pt-[var(--scroll-top-offset)]'
+            : 'pt-[var(--scroll-top-offset)] pb-8',
         ].join(' ')}
         id="main-content"
       >

@@ -35,7 +35,16 @@ export function getAllowedNavigationForRole(role) {
         { to: '/dashboard', label: 'Accueil' },
         { to: '/galleries', label: 'Galeries' },
         { to: '/shops', label: 'Boutiques' },
+        { to: '/meters', label: 'Compteurs' },
+        { to: '/readings', label: 'Relevés' },
+        { to: '/energy-purchases', label: 'Achats d’énergie' },
+        { to: '/alerts', label: 'Alertes' },
+        { to: '/incidents', label: 'Incidents' },
+        { to: '/power-status', label: 'État du courant' },
+        { to: '/reports', label: 'Rapports' },
+        { to: '/invoices', label: 'Factures' },
         { to: '/users', label: 'Utilisateurs' },
+        { to: '/settings', label: 'Paramètres' },
         { to: '/profile', label: 'Profil' },
       ];
     case ROLES.GALLERY_ADMIN:

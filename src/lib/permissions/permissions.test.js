@@ -69,7 +69,7 @@ describe('permissions — hasShopAccess', () => {
 describe('permissions — navigation par rôle', () => {
   it('retourne une navigation cohérente', () => {
     expect(getAllowedNavigationForRole(ROLES.SHOP_WORKER)).toHaveLength(3);
-    expect(getAllowedNavigationForRole(ROLES.SUPER_ADMIN)).toHaveLength(5);
+    expect(getAllowedNavigationForRole(ROLES.SUPER_ADMIN)).toHaveLength(14);
   });
   it('fallback neutre pour rôle inconnu', () => {
     const nav = getAllowedNavigationForRole('INCONNU');

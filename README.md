@@ -92,6 +92,7 @@ cp .env.example .env
 cp .firebaserc.example .firebaserc
 # Renseigner .env et .firebaserc
 npm run dev
+```
 
 ## Mode gratuit
 

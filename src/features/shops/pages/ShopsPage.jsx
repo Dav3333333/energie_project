@@ -10,7 +10,7 @@ import EmptyState from '@/components/common/EmptyState';
 import LoadingState from '@/components/common/LoadingState';
 import Button from '@/components/ui/Button';
 import { useAuth } from '@/features/auth/hooks/useAuth';
-import { useShopsByGallery } from '../hooks/useShops';
+import { useAllShops, useShopsByGallery } from '../hooks/useShops';
 import { ROLES } from '@/constants/roles';
 import { formatKwh } from '@/lib/formatters';
 
@@ -19,11 +19,14 @@ export default function ShopsPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ACTIVE');
+  const isSuperAdmin = profile?.role === ROLES.SUPER_ADMIN;
 
   const galleryId = galleryIds?.[0] ?? null;
-  const { data: shops, isLoading } = useShopsByGallery(galleryId, {
-    status: statusFilter || undefined,
-  });
+  const filters = { status: statusFilter || undefined };
+  const galleryQuery = useShopsByGallery(galleryId, filters);
+  const allQuery = useAllShops(filters, isSuperAdmin);
+  const shops = isSuperAdmin ? allQuery.data : galleryQuery.data;
+  const isLoading = isSuperAdmin ? allQuery.isLoading : galleryQuery.isLoading;
 
   const filtered = useMemo(() => {
     const s = search.trim().toLowerCase();

@@ -1,6 +1,4 @@
-import {
-  collection, doc, getDoc, onSnapshot, query, where, orderBy, limit,
-} from 'firebase/firestore';
+import { collection, doc, getDoc, onSnapshot, query, where, limit } from 'firebase/firestore';
 import { db } from '@/lib/firebase/firebase';
 
 export async function fetchShop(shopId) {
@@ -18,10 +16,19 @@ export function subscribeShopsByGallery(galleryId, { status, balanceStatus, page
   const constraints = [where('galleryId', '==', galleryId)];
   if (status) constraints.push(where('status', '==', status));
   if (balanceStatus) constraints.push(where('balanceStatus', '==', balanceStatus));
-  constraints.push(orderBy('name'));
   constraints.push(limit(pageSize));
   return onSnapshot(query(collection(db, 'shops'), ...constraints), (snap) => {
-    cb(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    cb(snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => a.name.localeCompare(b.name)));
+  }, onError);
+}
+
+export function subscribeAllShops({ status, balanceStatus, pageSize = 100 } = {}, cb, onError) {
+  const constraints = [];
+  if (status) constraints.push(where('status', '==', status));
+  if (balanceStatus) constraints.push(where('balanceStatus', '==', balanceStatus));
+  constraints.push(limit(pageSize));
+  return onSnapshot(query(collection(db, 'shops'), ...constraints), (snap) => {
+    cb(snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => a.name.localeCompare(b.name)));
   }, onError);
 }
 
