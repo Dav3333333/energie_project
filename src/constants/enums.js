@@ -1,0 +1,54 @@
+export const ENERGY_SOURCE = Object.freeze({
+  GRID: 'GRID',
+  GENERATOR: 'GENERATOR',
+  SOLAR: 'SOLAR',
+  BATTERY: 'BATTERY',
+  UNKNOWN: 'UNKNOWN',
+});
+
+export const READING_STATUS = Object.freeze({
+  VALID: 'VALID',
+  INVALID: 'INVALID',
+  CORRECTED: 'CORRECTED',
+  CANCELLED: 'CANCELLED',
+});
+
+export const PURCHASE_STATUS = Object.freeze({
+  VALID: 'VALID',
+  CANCELLED: 'CANCELLED',
+});
+
+export const PAYMENT_METHOD = Object.freeze({
+  CASH: 'CASH',
+  MOBILE_MONEY: 'MOBILE_MONEY',
+  BANK: 'BANK',
+  OTHER: 'OTHER',
+});
+
+export const METER_TYPE = Object.freeze({
+  MAIN: 'MAIN',
+  SUB_METER: 'SUB_METER',
+});
+
+export const ALERT_TYPE = Object.freeze({
+  LOW_CREDIT: 'LOW_CREDIT',
+  CRITICAL_CREDIT: 'CRITICAL_CREDIT',
+  EXHAUSTED_CREDIT: 'EXHAUSTED_CREDIT',
+  MANUAL_OUTAGE: 'MANUAL_OUTAGE',
+  MANUAL_UNSTABLE_POWER: 'MANUAL_UNSTABLE_POWER',
+  READING_ANOMALY: 'READING_ANOMALY',
+  INCIDENT: 'INCIDENT',
+});
+
+export const ALERT_SEVERITY = Object.freeze({
+  INFO: 'INFO',
+  WARNING: 'WARNING',
+  CRITICAL: 'CRITICAL',
+});
+
+export const INCIDENT_STATUS = Object.freeze({
+  OPEN: 'OPEN',
+  IN_PROGRESS: 'IN_PROGRESS',
+  RESOLVED: 'RESOLVED',
+  CLOSED: 'CLOSED',
+});

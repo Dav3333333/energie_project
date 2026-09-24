@@ -1,0 +1,67 @@
+:root {
+  /* Échelle typographique mobile (16px = base anti-zoom iOS) */
+  --fs-xs: 0.75rem;    /* 12 */
+  --fs-sm: 0.875rem;   /* 14 */
+  --fs-base: 1rem;     /* 16 — MINIMUM sur input */
+  --fs-lg: 1.125rem;   /* 18 */
+  --fs-xl: 1.25rem;    /* 20 */
+  --fs-2xl: 1.5rem;    /* 24 */
+  --fs-3xl: 1.875rem;  /* 30 */
+
+  /* Hauteurs tactiles */
+  --touch-sm: 36px;    /* icônes secondaires */
+  --touch-md: 44px;    /* iOS HIG minimum */
+  --touch-lg: 56px;    /* CTA principaux */
+  --touch-xl: 64px;    /* Bottom nav items */
+
+  /* Rayons */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-full: 9999px;
+
+  /* Espacements mobiles */
+  --pad-screen: 16px;  /* padding horizontal des écrans */
+  --gap-list: 12px;    /* gap entre cartes de liste */
+  --gap-section: 24px; /* gap entre sections */
+
+  /* Safe areas */
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+
+  /* Hauteur barres UI */
+  --topbar-h: 56px;
+  --bottomnav-h: 64px;
+
+  /* Zones sûres pour contenu scrollable */
+  --scroll-top-offset: calc(var(--topbar-h) + var(--sat));
+  --scroll-bottom-offset: calc(var(--bottomnav-h) + var(--sab) + 16px);
+
+  /* Couleurs (miroir des tokens Tailwind pour usage CSS pur) */
+  --c-brand: #0ea5e9;
+  --c-brand-dark: #0284c7;
+  --c-success: #16a34a;
+  --c-warning: #f59e0b;
+  --c-danger: #dc2626;
+  --c-bg: #f8fafc;
+  --c-surface: #ffffff;
+  --c-border: #e2e8f0;
+  --c-text: #1e293b;
+  --c-text-muted: #64748b;
+}
+
+.dark {
+  --c-bg: #0f172a;
+  --c-surface: #1e293b;
+  --c-border: #334155;
+  --c-text: #f1f5f9;
+  --c-text-muted: #94a3b8;
+}
+
+/* Empêche le comportement de scroll élastique gênant en PWA */
+html {
+  overscroll-behavior: none;
+}

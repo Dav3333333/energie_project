@@ -1,0 +1,10 @@
+export const BALANCE_STATUS = Object.freeze({
+  NORMAL: 'NORMAL',
+  LOW: 'LOW',
+  CRITICAL: 'CRITICAL',
+  EXHAUSTED: 'EXHAUSTED',
+  UNKNOWN: 'UNKNOWN',
+});
+
+export const DEFAULT_LOW_THRESHOLD = 50;
+export const DEFAULT_CRITICAL_THRESHOLD = 10;

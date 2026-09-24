@@ -1,0 +1,16 @@
+const BALANCE_STATUS = Object.freeze({
+  NORMAL: 'NORMAL',
+  LOW: 'LOW',
+  CRITICAL: 'CRITICAL',
+  EXHAUSTED: 'EXHAUSTED',
+  UNKNOWN: 'UNKNOWN',
+});
+
+const POWER_STATUS = Object.freeze({
+  AVAILABLE: 'AVAILABLE',
+  OUTAGE: 'OUTAGE',
+  UNSTABLE: 'UNSTABLE',
+  UNKNOWN: 'UNKNOWN',
+});
+
+module.exports = { BALANCE_STATUS, POWER_STATUS };

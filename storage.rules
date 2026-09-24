@@ -1,0 +1,80 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ============================================================
+    // HELPERS (dupliqués depuis Firestore, indépendants)
+    // ============================================================
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Les règles Storage ne peuvent pas lire Firestore directement ;
+    // on s'appuie sur les custom claims ou sur une validation par path.
+    // Ici : validation par préfixe de chemin + check d'authentification.
+    // La vérification de rôle est faite côté Cloud Functions (upload) et
+    // côté Firestore (lecture des métadonnées d'entité).
+
+    function isImage() {
+      return request.resource.contentType.matches('image/.*');
+    }
+
+    function isPdf() {
+      return request.resource.contentType == 'application/pdf';
+    }
+
+    function lessThan5Mb() {
+      return request.resource.size < 5 * 1024 * 1024;
+    }
+
+    // ============================================================
+    // REÇUS D'ACHAT — écriture utilisateur authentifié, lecture authentifié
+    // ============================================================
+    match /receipts/{galleryId}/{shopId}/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
+        && lessThan5Mb()
+        && (isImage() || isPdf());
+      allow delete: if false; // jamais de suppression physique
+    }
+
+    // ============================================================
+    // PREUVES DE RELEVÉ — images uniquement
+    // ============================================================
+    match /reading-evidence/{galleryId}/{shopId}/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
+        && lessThan5Mb()
+        && isImage();
+      allow delete: if false;
+    }
+
+    // ============================================================
+    // FACTURES PDF — lecture authentifiée, écriture serveur uniquement
+    // ============================================================
+    match /invoices/{galleryId}/{invoiceId}.pdf {
+      allow read: if isSignedIn();
+      allow write: if false; // Cloud Functions (Admin SDK) uniquement
+      allow delete: if false;
+    }
+
+    // ============================================================
+    // LOGOS GALERIE — lecture publique authentifiée, écriture admin
+    // ============================================================
+    match /gallery-logos/{galleryId}/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
+        && lessThan5Mb()
+        && isImage();
+      allow delete: if false;
+    }
+
+    // ============================================================
+    // CATCH-ALL
+    // ============================================================
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

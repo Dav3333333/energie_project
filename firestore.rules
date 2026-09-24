@@ -1,0 +1,288 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ================================================================
+    // HELPERS
+    // ================================================================
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function uid() {
+      return request.auth.uid;
+    }
+
+    function me() {
+      return get(/databases/$(database)/documents/users/$(uid())).data;
+    }
+
+    function isActive() {
+      return isSignedIn() && me().status == 'ACTIVE';
+    }
+
+    function role() {
+      return isActive() ? me().role : null;
+    }
+
+    function isSuperAdmin()    { return role() == 'SUPER_ADMIN'; }
+    function isGalleryAdmin()  { return role() == 'GALLERY_ADMIN'; }
+    function isTechnician()    { return role() == 'TECHNICIAN'; }
+    function isShopOwner()     { return role() == 'SHOP_OWNER'; }
+    function isShopWorker()    { return role() == 'SHOP_WORKER'; }
+
+    function myGalleryIds() {
+      return isActive() ? me().galleryIds : [];
+    }
+    function myShopIds() {
+      return isActive() ? me().shopIds : [];
+    }
+    function inGallery(gid) { return gid in myGalleryIds(); }
+    function inShop(sid)    { return sid in myShopIds(); }
+
+    function hasGalleryAccess(gid) {
+      return isSuperAdmin() || inGallery(gid);
+    }
+    function hasShopAccess(sid) {
+      return isSuperAdmin() || inShop(sid);
+    }
+
+    // Interdit la modification des champs calculés côté client.
+    function computedFieldsUntouched() {
+      return !request.resource.data
+        .diff(resource.data)
+        .affectedKeys()
+        .hasAny([
+          'totalPurchasedKwh', 'totalConsumedKwh', 'remainingKwh', 'remainingAmount',
+          'averageDailyConsumptionKwh', 'estimatedDaysRemaining',
+          'estimatedDepletionDate', 'balanceStatus', 'lastBalanceCalculatedAt',
+          'lastReadingAt', 'lastPurchaseAt', 'activePricePerKwh',
+        ]);
+    }
+
+    // Champs d'identité et d'autorisation d'un user : immuables côté client.
+    function userIdentityUntouched() {
+      return !request.resource.data
+        .diff(resource.data)
+        .affectedKeys()
+        .hasAny([
+          'uid', 'email', 'username', 'usernameNormalized',
+          'role', 'status', 'galleryIds', 'shopIds',
+          'createdAt', 'createdByUserId',
+        ]);
+    }
+
+    // ================================================================
+    // USERS
+    // ================================================================
+    match /users/{userId} {
+      // Lecture : soi-même ou SUPER_ADMIN.
+      allow get: if isSignedIn() && (userId == uid() || isSuperAdmin());
+      // Aucun list large : les admins passent par des callables pour lister.
+      allow list: if isSuperAdmin();
+      // Création serveur uniquement.
+      allow create: if false;
+      // Modification : SUPER_ADMIN tout ; utilisateur lui-même champs autorisés uniquement.
+      allow update: if isSuperAdmin() ||
+        (userId == uid()
+          && userIdentityUntouched()
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['firstName', 'lastName', 'fullName', 'phone', 'updatedAt', 'lastLoginAt']));
+      // Pas de suppression physique.
+      allow delete: if false;
+    }
+
+    // ================================================================
+    // USERNAMES — seule exception hors-auth, en get uniquement.
+    // Contient { uid, email, createdAt }. Aucun list, aucune écriture client.
+    // ================================================================
+    match /usernames/{normalized} {
+      allow get: if true;
+      allow list: if false;
+      allow write: if false;
+    }
+
+    // ================================================================
+    // GALLERIES
+    // ================================================================
+    match /galleries/{gid} {
+      allow get: if isActive() && hasGalleryAccess(gid);
+      allow list: if isActive();
+      allow create: if isSuperAdmin();
+      allow update: if isSuperAdmin() || (isGalleryAdmin() && inGallery(gid));
+      allow delete: if false;
+
+      match /admins/{adminUid} {
+        allow read: if isActive() && (isSuperAdmin() || inGallery(gid));
+        allow write: if isSuperAdmin() || (isGalleryAdmin() && inGallery(gid));
+      }
+
+      match /technicians/{techUid} {
+        allow read: if isActive() && (isSuperAdmin() || inGallery(gid));
+        allow write: if isSuperAdmin() || (isGalleryAdmin() && inGallery(gid));
+      }
+
+      match /tariffs/{tariffId} {
+        allow read: if isActive() && (isSuperAdmin() || inGallery(gid) ||
+          (gid in myGalleryIds() && isTechnician()));
+        allow write: if isSuperAdmin() || (isGalleryAdmin() && inGallery(gid));
+      }
+
+      match /powerEvents/{eventId} {
+        allow read: if isActive() && (isSuperAdmin() || inGallery(gid));
+        allow write: if false; // Cloud Function uniquement
+      }
+    }
+
+    // ================================================================
+    // SHOPS
+    // ================================================================
+    match /shops/{shopId} {
+      allow get: if isActive() && (
+        isSuperAdmin() ||
+        (isGalleryAdmin()  && inGallery(resource.data.galleryId)) ||
+        (isTechnician()    && inGallery(resource.data.galleryId)) ||
+        inShop(shopId)
+      );
+      // List : le client DOIT filtrer par galleryId ou shopId.
+      allow list: if isActive();
+
+      allow create: if isSuperAdmin() ||
+        (isGalleryAdmin() && inGallery(request.resource.data.galleryId));
+
+      allow update: if (isSuperAdmin() ||
+        (isGalleryAdmin() && inGallery(resource.data.galleryId)))
+        && computedFieldsUntouched();
+
+      allow delete: if false;
+    }
+
+    // ================================================================
+    // METERS
+    // ================================================================
+    match /meters/{meterId} {
+      allow read: if isActive() && (
+        isSuperAdmin() ||
+        (isGalleryAdmin() && inGallery(resource.data.galleryId)) ||
+        (isTechnician()   && inGallery(resource.data.galleryId)) ||
+        (resource.data.shopId != null && inShop(resource.data.shopId))
+      );
+      allow create: if (isSuperAdmin() || isGalleryAdmin() || isTechnician())
+        && inGallery(request.resource.data.galleryId);
+      allow update: if (isSuperAdmin() ||
+        ((isGalleryAdmin() || isTechnician()) && inGallery(resource.data.galleryId)))
+        && !request.resource.data.diff(resource.data).affectedKeys()
+             .hasAny(['lastTotalKwh', 'lastValidReadingId', 'lastReadingAt', 'initialKwh']);
+      allow delete: if false;
+    }
+
+    // ================================================================
+    // READINGS — Cloud Functions uniquement pour l'écriture
+    // ================================================================
+    match /readings/{readingId} {
+      allow read: if isActive() && (
+        isSuperAdmin() ||
+        (isGalleryAdmin() && inGallery(resource.data.galleryId)) ||
+        (isTechnician()   && inGallery(resource.data.galleryId)) ||
+        (resource.data.shopId != null && inShop(resource.data.shopId))
+      );
+      allow write: if false;
+    }
+
+    // ================================================================
+    // ENERGY PURCHASES — Cloud Functions uniquement
+    // SHOP_WORKER exclu.
+    // ================================================================
+    match /energyPurchases/{purchaseId} {
+      allow read: if isActive() && !isShopWorker() && (
+        isSuperAdmin() ||
+        (isGalleryAdmin() && inGallery(resource.data.galleryId)) ||
+        (isTechnician()   && inGallery(resource.data.galleryId)) ||
+        (resource.data.shopId != null && inShop(resource.data.shopId))
+      );
+      allow write: if false;
+    }
+
+    // ================================================================
+    // ALERTS
+    // ================================================================
+    match /alerts/{alertId} {
+      allow read: if isActive() && (
+        isSuperAdmin() ||
+        (isGalleryAdmin() && inGallery(resource.data.galleryId)) ||
+        (isTechnician()   && inGallery(resource.data.galleryId)) ||
+        (resource.data.shopId != null && inShop(resource.data.shopId))
+      );
+      // Accusé de réception / résolution : champs limités, admins et techniciens.
+      allow update: if isActive()
+        && (isSuperAdmin() ||
+           (isGalleryAdmin() && inGallery(resource.data.galleryId)) ||
+           (isTechnician()   && inGallery(resource.data.galleryId)))
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly([
+               'status', 'acknowledgedAt', 'acknowledgedByUserId',
+               'resolvedAt', 'resolvedByUserId', 'updatedAt',
+             ]);
+      allow create, delete: if false;
+    }
+
+    // ================================================================
+    // INCIDENTS — Cloud Functions uniquement
+    // ================================================================
+    match /incidents/{incidentId} {
+      allow read: if isActive() && (
+        isSuperAdmin() ||
+        (isGalleryAdmin() && inGallery(resource.data.galleryId)) ||
+        (isTechnician()   && inGallery(resource.data.galleryId)) ||
+        (resource.data.shopId != null && inShop(resource.data.shopId))
+      );
+      allow write: if false;
+    }
+
+    // ================================================================
+    // INVOICES — Cloud Functions uniquement. SHOP_WORKER exclu.
+    // ================================================================
+    match /invoices/{invoiceId} {
+      allow read: if isActive() && !isShopWorker() && (
+        isSuperAdmin() ||
+        (isGalleryAdmin() && inGallery(resource.data.galleryId)) ||
+        (resource.data.shopId != null && inShop(resource.data.shopId))
+      );
+      allow write: if false;
+    }
+
+    // ================================================================
+    // AUDIT LOGS — lecture restreinte, écriture serveur uniquement
+    // ================================================================
+    match /auditLogs/{logId} {
+      allow read: if isActive() && (
+        isSuperAdmin() ||
+        (isGalleryAdmin() && inGallery(resource.data.galleryId))
+      );
+      allow write: if false;
+    }
+
+    // ================================================================
+    // SETTINGS
+    // ================================================================
+    match /settings/{settingId} {
+      allow read: if isActive();
+      allow write: if isSuperAdmin();
+    }
+
+    // ================================================================
+    // CATCH-ALL : tout le reste refusé
+    // ================================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ================================================================
+    // COUNTERS — serveur uniquement (numérotation reçus/factures)
+    // ================================================================
+    match /counters/{counterId} {
+      allow read, write: if false;
+    }
+  }
+}
