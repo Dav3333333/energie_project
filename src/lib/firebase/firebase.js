@@ -13,8 +13,6 @@ import {
   initializeFirestore,
   CACHE_SIZE_UNLIMITED,
 } from 'firebase/firestore';
-import { getStorage, connectStorageEmulator } from 'firebase/storage';
-import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
 import env, { assertFirebaseEnv } from '@/config/env';
 
 assertFirebaseEnv();
@@ -34,8 +32,6 @@ try {
 
 export const auth = getAuth(app);
 export const db = firestore;
-export const storage = getStorage(app);
-export const functions = getFunctions(app, 'us-central1');
 
 // Persistance Auth : localStorage en prod, mémoire en dev pour éviter les fuites entre tests.
 setPersistence(auth, env.useEmulators ? inMemoryPersistence : browserLocalPersistence).catch(() => {
@@ -50,8 +46,6 @@ enableIndexedDbPersistence(db).catch(() => {
 if (env.useEmulators) {
   connectAuthEmulator(auth, `http://${env.emulators.authHost}`, { disableWarnings: true });
   connectFirestoreEmulator(db, ...env.emulators.firestoreHost.split(':'));
-  connectStorageEmulator(storage, ...env.emulators.storageHost.split(':'));
-  connectFunctionsEmulator(functions, ...env.emulators.functionsHost.split(':'));
 }
 
 export { app };

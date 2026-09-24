@@ -1,25 +1,51 @@
-import { httpsCallable } from 'firebase/functions';
-import { functions } from './firebase';
+import {
+  acknowledgeAlert,
+  archiveGallery,
+  archiveManagedUser,
+  archiveMeter,
+  archiveShop,
+  cancelEnergyPurchase,
+  createEnergyPurchase,
+  createGallery,
+  createIncident,
+  createManagedUser,
+  createManualPowerEvent,
+  createManualReading,
+  createMeter,
+  createShop,
+  generateInvoice,
+  listUsersByGallery,
+  resolveAlert,
+  updateGallery,
+  updateIncidentStatus,
+  updateManagedUser,
+  updateMeter,
+  updateShop,
+} from './directOperations';
 
 export const callables = {
-  createManagedUser: httpsCallable(functions, 'createManagedUser'),
-  updateManagedUser: httpsCallable(functions, 'updateManagedUser'),
-  archiveManagedUser: httpsCallable(functions, 'archiveManagedUser'),
-  listUsersByGallery: httpsCallable(functions, 'listUsersByGallery'),
-
-  createGallery: httpsCallable(functions, 'createGallery'),
-  updateGallery: httpsCallable(functions, 'updateGallery'),
-  archiveGallery: httpsCallable(functions, 'archiveGallery'),
-
-  createShop: httpsCallable(functions, 'createShop'),
-  updateShop: httpsCallable(functions, 'updateShop'),
-  archiveShop: httpsCallable(functions, 'archiveShop'),
-
-  createMeter: httpsCallable(functions, 'createMeter'),
-  updateMeter: httpsCallable(functions, 'updateMeter'),
-  archiveMeter: httpsCallable(functions, 'archiveMeter'),
-
-  createManualReading: httpsCallable(functions, 'createManualReading'),
+  createManagedUser,
+  updateManagedUser,
+  archiveManagedUser,
+  listUsersByGallery,
+  createGallery,
+  updateGallery,
+  archiveGallery,
+  createShop,
+  updateShop,
+  archiveShop,
+  createMeter,
+  updateMeter,
+  archiveMeter,
+  createManualReading,
+  createEnergyPurchase,
+  cancelEnergyPurchase,
+  createManualPowerEvent,
+  createIncident,
+  updateIncidentStatus,
+  acknowledgeAlert,
+  resolveAlert,
+  generateInvoice,
 };
 
 /**

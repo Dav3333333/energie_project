@@ -69,18 +69,18 @@ Application web **PWA mobile-first** de gestion manuelle de la distribution, du 
 
 - React 18 + Vite + JavaScript (pas de TypeScript)
 - Tailwind CSS 3, design system mobile-first
-- Firebase Auth (email + username), Firestore, Cloud Functions 2nd gen, Storage, Hosting
+- Firebase Auth (email + username) et Firestore
+- Netlify pour l'hébergement du frontend
 - TanStack React Query, Zustand, React Hook Form, Zod
 - Recharts, date-fns, jsPDF, Lucide React, Sonner
 - vite-plugin-pwa (Workbox)
-- pdfkit (Cloud Functions)
 
 ## Prérequis
 
 - Node.js 20 LTS
 - npm 10+
 - Firebase CLI 13+ (`npm i -g firebase-tools`)
-- Un projet Firebase (Blaze recommandé pour Functions 2nd gen)
+- Un projet Firebase gratuit avec Authentication et Firestore activés
 
 ## Installation
 
@@ -88,7 +88,28 @@ Application web **PWA mobile-first** de gestion manuelle de la distribution, du 
 git clone <votre-repo> galerie-energie-manager
 cd galerie-energie-manager
 npm install
-npm --prefix functions install
 cp .env.example .env
 cp .firebaserc.example .firebaserc
-# Renseigner .env et .firebaserc# energie_project
+# Renseigner .env et .firebaserc
+npm run dev
+
+## Mode gratuit
+
+Le frontend est hébergé sur Netlify. Firebase est utilisé uniquement pour
+Authentication et Firestore. Les données énergétiques sont écrites directement
+dans Firestore avec les règles du fichier `firestore.rules`.
+
+Le premier compte doit être créé manuellement dans Firebase Console :
+
+1. Authentication > Users > Add user : créer l'email et le mot de passe.
+2. Copier le UID généré.
+3. Firestore > collection `users` > créer un document dont l'ID est ce UID.
+4. Ajouter `uid`, `email`, `username`, `usernameNormalized`, `firstName`,
+   `lastName`, `fullName`, `role: "SUPER_ADMIN"`, `status: "ACTIVE"`,
+   `galleryIds: []`, `shopIds: []` et `lastLoginAt: null`.
+5. Créer `usernames/{usernameNormalized}` avec `uid` et `email`.
+
+Les fonctions PDF, Storage et la création d'autres comptes Auth sont désactivées
+dans ce mode gratuit.
+
+Pour Netlify : `npm run build` avec le dossier publié `dist`.

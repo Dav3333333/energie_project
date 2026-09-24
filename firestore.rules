@@ -131,7 +131,12 @@ service cloud.firestore {
 
       match /powerEvents/{eventId} {
         allow read: if isActive() && (isSuperAdmin() || inGallery(gid));
-        allow write: if false; // Cloud Function uniquement
+        allow create: if isActive() &&
+          (isSuperAdmin() || (isGalleryAdmin() && inGallery(request.resource.data.galleryId))) &&
+          request.resource.data.galleryId == gid;
+        allow update: if isActive() &&
+          (isSuperAdmin() || (isGalleryAdmin() && inGallery(gid))) &&
+          request.resource.data.galleryId == gid;
       }
     }
 
@@ -151,9 +156,8 @@ service cloud.firestore {
       allow create: if isSuperAdmin() ||
         (isGalleryAdmin() && inGallery(request.resource.data.galleryId));
 
-      allow update: if (isSuperAdmin() ||
-        (isGalleryAdmin() && inGallery(resource.data.galleryId)))
-        && computedFieldsUntouched();
+      allow update: if isActive() && (isSuperAdmin() ||
+        (isGalleryAdmin() && inGallery(resource.data.galleryId)));
 
       allow delete: if false;
     }
@@ -170,10 +174,8 @@ service cloud.firestore {
       );
       allow create: if (isSuperAdmin() || isGalleryAdmin() || isTechnician())
         && inGallery(request.resource.data.galleryId);
-      allow update: if (isSuperAdmin() ||
-        ((isGalleryAdmin() || isTechnician()) && inGallery(resource.data.galleryId)))
-        && !request.resource.data.diff(resource.data).affectedKeys()
-             .hasAny(['lastTotalKwh', 'lastValidReadingId', 'lastReadingAt', 'initialKwh']);
+      allow update: if isActive() && (isSuperAdmin() ||
+        ((isGalleryAdmin() || isTechnician()) && inGallery(resource.data.galleryId)));
       allow delete: if false;
     }
 
@@ -187,7 +189,12 @@ service cloud.firestore {
         (isTechnician()   && inGallery(resource.data.galleryId)) ||
         (resource.data.shopId != null && inShop(resource.data.shopId))
       );
-      allow write: if false;
+      allow create: if isActive() && !isShopWorker() &&
+        (isSuperAdmin() || (isGalleryAdmin() && inGallery(request.resource.data.galleryId)) ||
+         (isTechnician() && inGallery(request.resource.data.galleryId)));
+      allow update: if isActive() && !isShopWorker() &&
+        (isSuperAdmin() || (isGalleryAdmin() && inGallery(resource.data.galleryId)) ||
+         (isTechnician() && inGallery(resource.data.galleryId)));
     }
 
     // ================================================================
@@ -201,7 +208,12 @@ service cloud.firestore {
         (isTechnician()   && inGallery(resource.data.galleryId)) ||
         (resource.data.shopId != null && inShop(resource.data.shopId))
       );
-      allow write: if false;
+      allow create: if isActive() &&
+        (isSuperAdmin() || (isGalleryAdmin() && inGallery(request.resource.data.galleryId)) ||
+         (isTechnician() && inGallery(request.resource.data.galleryId)));
+      allow update: if isActive() &&
+        (isSuperAdmin() || (isGalleryAdmin() && inGallery(resource.data.galleryId)) ||
+         (isTechnician() && inGallery(resource.data.galleryId)));
     }
 
     // ================================================================
@@ -228,7 +240,7 @@ service cloud.firestore {
     }
 
     // ================================================================
-    // INCIDENTS — Cloud Functions uniquement
+    // INCIDENTS — écriture directe du prototype gratuit
     // ================================================================
     match /incidents/{incidentId} {
       allow read: if isActive() && (
@@ -237,7 +249,12 @@ service cloud.firestore {
         (isTechnician()   && inGallery(resource.data.galleryId)) ||
         (resource.data.shopId != null && inShop(resource.data.shopId))
       );
-      allow write: if false;
+      allow create: if isActive() &&
+        (isSuperAdmin() || (isGalleryAdmin() && inGallery(request.resource.data.galleryId)) ||
+         (isTechnician() && inGallery(request.resource.data.galleryId)));
+      allow update: if isActive() &&
+        (isSuperAdmin() || (isGalleryAdmin() && inGallery(resource.data.galleryId)) ||
+         (isTechnician() && inGallery(resource.data.galleryId)));
     }
 
     // ================================================================

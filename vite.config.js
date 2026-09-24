@@ -148,8 +148,6 @@ export default defineConfig({
             'firebase/app',
             'firebase/auth',
             'firebase/firestore',
-            'firebase/storage',
-            'firebase/functions',
           ],
           charts: ['recharts'],
           pdf: ['jspdf', 'jspdf-autotable'],
