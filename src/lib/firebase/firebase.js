@@ -9,9 +9,9 @@ import {
 import {
   getFirestore,
   connectFirestoreEmulator,
-  enableIndexedDbPersistence,
   initializeFirestore,
-  CACHE_SIZE_UNLIMITED,
+  persistentLocalCache,
+  persistentMultipleTabManager,
 } from 'firebase/firestore';
 import env, { assertFirebaseEnv } from '@/config/env';
 
@@ -23,8 +23,8 @@ const app = getApps().length ? getApp() : initializeApp(env.firebase);
 let firestore;
 try {
   firestore = initializeFirestore(app, {
-    cacheSizeBytes: CACHE_SIZE_UNLIMITED,
     ignoreUndefinedProperties: true,
+    cache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
   });
 } catch {
   firestore = getFirestore(app);
@@ -36,11 +36,6 @@ export const db = firestore;
 // Persistance Auth : localStorage en prod, mémoire en dev pour éviter les fuites entre tests.
 setPersistence(auth, env.useEmulators ? inMemoryPersistence : browserLocalPersistence).catch(() => {
   // Persistence indisponible — on continue avec le comportement par défaut.
-});
-
-// Persistance Firestore (offline lecture seule). Echec = dégradation silencieuse.
-enableIndexedDbPersistence(db).catch(() => {
-  // Multi-onglets ou navigateur non compatible — on continue sans persistance locale.
 });
 
 if (env.useEmulators) {

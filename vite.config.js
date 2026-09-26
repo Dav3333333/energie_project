@@ -108,27 +108,14 @@ export default defineConfig({
             },
           },
 
-          // --- Firebase Auth / Firestore / Functions : JAMAIS cachés ---
-          {
-            urlPattern: /^https:\/\/(identitytoolkit|securetoken)\.googleapis\.com\/.*/i,
-            handler: 'NetworkOnly',
-          },
-          {
-            urlPattern: /^https:\/\/firestore\.googleapis\.com\/.*/i,
-            handler: 'NetworkOnly',
-          },
-          {
-            urlPattern: /^https:\/\/.*\.cloudfunctions\.net\/.*/i,
-            handler: 'NetworkOnly',
-          },
-          {
-            urlPattern: /^https:\/\/.*\.run\.app\/.*/i, // Functions 2nd gen
-            handler: 'NetworkOnly',
-          },
-          {
-            urlPattern: /^https:\/\/firebaseinstallations\.googleapis\.com\/.*/i,
-            handler: 'NetworkOnly',
-          },
+          // --- Firebase Auth / Firestore / Functions : ne pas router via le SW.
+          // Ces endpoints ne doivent jamais être mis en cache. On les laisse simplement
+          // sans route (plutôt que 'NetworkOnly') pour qu'ils passent la requête au
+          // navigateur sans jamais transiter par le fetch handler du Service Worker :
+          // le canal streaming/long-polling de Firestore (Listen) ne survit pas à un
+          // passage par les stratégies Workbox (réponse bufferisée), ce qui provoque
+          // l'erreur "A ServiceWorker intercepted the request and encountered an
+          // unexpected error".
         ],
       },
     }),
