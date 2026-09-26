@@ -6,7 +6,7 @@ const { requireAuth, requireGalleryAccess } = require('../middleware/requireAuth
 const { db } = require('../config/admin');
 const { ROLES } = require('../constants/roles');
 
-const Schema = z.object({ galleryId: z.string().min(1) });
+const Schema = z.object({ galleryId: z.string().min(1).optional() });
 
 /**
  * Liste les utilisateurs rattachés à une galerie (admins, techniciens, owners, workers).
@@ -19,18 +19,21 @@ exports.listUsersByGallery = onCall({ region: 'us-central1' }, async (req) => {
       throw new AppError(ERROR_CODES.PERMISSION_DENIED, 'Rôle non autorisé.');
     }
     const input = validate(req.data, Schema);
-    requireGalleryAccess(actor, input.galleryId);
+    if (actor.role === ROLES.GALLERY_ADMIN && !input.galleryId) {
+      throw new AppError(ERROR_CODES.INVALID_ARGUMENT, 'Une galerie est requise.');
+    }
+    if (input.galleryId) requireGalleryAccess(actor, input.galleryId);
 
-    const snap = await db
-      .collection('users')
-      .where('galleryIds', 'array-contains', input.galleryId)
-      .limit(500)
-      .get();
+    let usersQuery = db.collection('users');
+    if (input.galleryId) {
+      usersQuery = usersQuery.where('galleryIds', 'array-contains', input.galleryId);
+    }
+    const snap = await usersQuery.limit(500).get();
 
     const users = snap.docs.map((d) => {
       const data = d.data();
       return {
-        uid: data.uid,
+        uid: data.uid ?? d.id,
         email: data.email,
         username: data.username,
         fullName: data.fullName,

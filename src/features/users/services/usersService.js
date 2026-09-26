@@ -14,6 +14,6 @@ export function subscribeUser(uid, cb, onError) {
 }
 
 export async function listUsersByGallery(galleryId) {
-  const { data } = await callables.listUsersByGallery({ galleryId });
+  const { data } = await callables.listUsersByGallery(galleryId ? { galleryId } : {});
   return data.users;
 }

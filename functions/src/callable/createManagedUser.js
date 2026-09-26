@@ -4,6 +4,7 @@ const { validate } = require('../utils/validate');
 const { AppError, ERROR_CODES, toHttpsError } = require('../utils/errors');
 const { requireAuth, requireRole, requireGalleryAccess } = require('../middleware/requireAuth');
 const { createManagedUser } = require('../services/user.service');
+const { db } = require('../config/admin');
 const { writeAuditLog } = require('../utils/audit');
 const { AUDIT_ACTIONS } = require('../constants/actions');
 const { ROLES } = require('../constants/roles');
@@ -42,8 +43,20 @@ exports.createManagedUser = onCall({ region: 'us-central1' }, async (request) =>
     }
 
     // SHOP_OWNER et SHOP_WORKER : au moins une boutique requise.
-    if ([ROLES.SHOP_OWNER, ROLES.SHOP_WORKER].includes(input.role) && input.shopIds.length === 0) {
-      throw new AppError(ERROR_CODES.INVALID_ARGUMENT, 'Au moins une boutique est requise.');
+    const shopRole = [ROLES.SHOP_OWNER, ROLES.SHOP_WORKER].includes(input.role);
+    if (shopRole && (input.shopIds.length === 0 || input.galleryIds.length === 0)) {
+      throw new AppError(ERROR_CODES.INVALID_ARGUMENT, 'Une galerie et une boutique sont requises.');
+    }
+    if (shopRole) {
+      const shopSnapshots = await Promise.all(
+        input.shopIds.map((shopId) => db.collection('shops').doc(shopId).get()),
+      );
+      const allShopsBelongToGallery = shopSnapshots.every(
+        (shop) => shop.exists && input.galleryIds.includes(shop.data().galleryId),
+      );
+      if (!allShopsBelongToGallery) {
+        throw new AppError(ERROR_CODES.INVALID_ARGUMENT, 'Une boutique ne correspond pas à la galerie sélectionnée.');
+      }
     }
 
     const created = await createManagedUser({

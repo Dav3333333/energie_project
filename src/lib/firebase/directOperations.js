@@ -269,16 +269,6 @@ export async function archiveManagedUser({ targetUid, reason }) {
   return result({ id: targetUid });
 }
 
-export async function listUsersByGallery({ galleryId }) {
-  actorId();
-  const snapshot = await getDocs(query(collection(db, 'users'), where('galleryIds', 'array-contains', galleryId)));
-  return result({ users: snapshot.docs.map((item) => ({ id: item.id, ...item.data() })) });
-}
-
-export function createManagedUser() {
-  return fail('La création Auth des utilisateurs doit être faite dans Firebase Console sans Cloud Functions.', 'unavailable');
-}
-
 export function generateInvoice() {
   return fail('Les factures PDF sont désactivées dans le mode gratuit sans Storage ni Cloud Functions.', 'unavailable');
 }

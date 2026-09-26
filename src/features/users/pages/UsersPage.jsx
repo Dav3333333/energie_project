@@ -21,7 +21,12 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!galleryId) return;
+    if (!profile?.role) return;
+    if (profile.role !== ROLES.SUPER_ADMIN && !galleryId) {
+      setUsers([]);
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
@@ -36,7 +41,7 @@ export default function UsersPage() {
     return () => {
       cancelled = true;
     };
-  }, [galleryId]);
+  }, [galleryId, profile?.role]);
 
   const canCreate = [ROLES.SUPER_ADMIN, ROLES.GALLERY_ADMIN].includes(profile?.role);
 

@@ -8,13 +8,11 @@ import {
   createEnergyPurchase,
   createGallery,
   createIncident,
-  createManagedUser,
   createManualPowerEvent,
   createManualReading,
   createMeter,
   createShop,
   generateInvoice,
-  listUsersByGallery,
   resolveAlert,
   updateGallery,
   updateIncidentStatus,
@@ -22,12 +20,22 @@ import {
   updateMeter,
   updateShop,
 } from './directOperations';
+import { getFunctions, connectFunctionsEmulator, httpsCallable } from 'firebase/functions';
+import { app } from './firebase';
+import env from '@/config/env';
+
+const functions = getFunctions(app, 'us-central1');
+if (env.useEmulators) {
+  connectFunctionsEmulator(functions, ...env.emulators.functionsHost.split(':'));
+}
+
+const callFunction = (name) => async (payload = {}) => httpsCallable(functions, name)(payload);
 
 export const callables = {
-  createManagedUser,
+  createManagedUser: callFunction('createManagedUser'),
   updateManagedUser,
   archiveManagedUser,
-  listUsersByGallery,
+  listUsersByGallery: callFunction('listUsersByGallery'),
   createGallery,
   updateGallery,
   archiveGallery,

@@ -12,7 +12,7 @@ export default function MobileFormLayout({ children, footer }) {
       <div className="flex-1 space-y-4">{children}</div>
       {footer && (
         <div
-          className="fixed inset-x-0 z-40 px-4 py-3 bg-[var(--c-surface)] border-t border-[var(--c-border)] safe-x"
+          className="fixed flex w-full inset-x-0 z-40 px-4 py-3 bg-[var(--c-surface)] border-t border-[var(--c-border)] safe-x"
           style={{
             bottom: keyboard > 0 ? `${keyboard}px` : 'var(--scroll-bottom-offset)',
             transition: 'bottom 150ms ease',
