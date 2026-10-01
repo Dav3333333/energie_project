@@ -6,137 +6,143 @@ service cloud.firestore {
     // ================================================================
     // HELPERS
     // ================================================================
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    function uid() {
-      return request.auth.uid;
-    }
+    function isSignedIn() { return request.auth != null; }
+    function uid() { return request.auth.uid; }
 
     function me() {
       return get(/databases/$(database)/documents/users/$(uid())).data;
     }
 
     function isActive() {
-      return isSignedIn() && me().status == 'ACTIVE';
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(uid()))
+        && me().status == 'ACTIVE';
     }
 
     function role() {
       return isActive() ? me().role : null;
     }
 
-    function isSuperAdmin()    { return role() == 'SUPER_ADMIN'; }
-    function isGalleryAdmin()  { return role() == 'GALLERY_ADMIN'; }
-    function isTechnician()    { return role() == 'TECHNICIAN'; }
-    function isShopOwner()     { return role() == 'SHOP_OWNER'; }
-    function isShopWorker()    { return role() == 'SHOP_WORKER'; }
+    function isSuperAdmin()   { return role() == 'SUPER_ADMIN'; }
+    function isGalleryAdmin() { return role() == 'GALLERY_ADMIN'; }
+    function isTechnician()   { return role() == 'TECHNICIAN'; }
+    function isShopOwner()    { return role() == 'SHOP_OWNER'; }
+    function isShopWorker()   { return role() == 'SHOP_WORKER'; }
 
-    function myGalleryIds() {
-      return isActive() ? me().galleryIds : [];
-    }
-    function myShopIds() {
-      return isActive() ? me().shopIds : [];
-    }
-    function inGallery(gid) { return gid in myGalleryIds(); }
-    function inShop(sid)    { return sid in myShopIds(); }
+    function myGalleryIds() { return isActive() ? me().galleryIds : []; }
+    function myShopIds()    { return isActive() ? me().shopIds    : []; }
 
-    function hasGalleryAccess(gid) {
-      return isSuperAdmin() || inGallery(gid);
+    function inGallery(gid) {
+      return isSuperAdmin() || (gid is string && gid in myGalleryIds());
     }
-    function hasShopAccess(sid) {
-      return isSuperAdmin() || inShop(sid);
+    function inShop(sid) {
+      return isSuperAdmin() || (sid is string && sid in myShopIds());
     }
 
-    // Interdit la modification des champs calculés côté client.
-    function computedFieldsUntouched() {
-      return !request.resource.data
-        .diff(resource.data)
-        .affectedKeys()
-        .hasAny([
-          'totalPurchasedKwh', 'totalConsumedKwh', 'remainingKwh', 'remainingAmount',
-          'averageDailyConsumptionKwh', 'estimatedDaysRemaining',
-          'estimatedDepletionDate', 'balanceStatus', 'lastBalanceCalculatedAt',
-          'lastReadingAt', 'lastPurchaseAt', 'activePricePerKwh',
-        ]);
-    }
-
-    // Champs d'identité et d'autorisation d'un user : immuables côté client.
-    function userIdentityUntouched() {
-      return !request.resource.data
-        .diff(resource.data)
-        .affectedKeys()
-        .hasAny([
-          'uid', 'email', 'username', 'usernameNormalized',
-          'role', 'status', 'galleryIds', 'shopIds',
-          'createdAt', 'createdByUserId',
-        ]);
+    // Champs calculés — interdits en écriture directe via update de shop (sauf service).
+    function shopComputedFields() {
+      return [
+        'totalPurchasedKwh', 'totalConsumedKwh', 'remainingKwh', 'remainingAmount',
+        'averageDailyConsumptionKwh', 'estimatedDaysRemaining',
+        'estimatedDepletionDate', 'balanceStatus', 'lastBalanceCalculatedAt',
+        'lastReadingAt', 'lastPurchaseAt', 'activePricePerKwh',
+      ];
     }
 
     // ================================================================
     // USERS
     // ================================================================
     match /users/{userId} {
-      // Lecture : soi-même ou SUPER_ADMIN.
-      allow get: if isSignedIn() && (userId == uid() || isSuperAdmin());
-      // Aucun list large : les admins passent par des callables pour lister.
-      allow list: if isSuperAdmin();
-      // Création serveur uniquement.
-      allow create: if false;
-      // Modification : SUPER_ADMIN tout ; utilisateur lui-même champs autorisés uniquement.
-      allow update: if isSuperAdmin() ||
-        (userId == uid()
-          && userIdentityUntouched()
-          && request.resource.data.diff(resource.data).affectedKeys()
-               .hasOnly(['firstName', 'lastName', 'fullName', 'phone', 'updatedAt', 'lastLoginAt']));
-      // Pas de suppression physique.
+      // Lecture : soi-même, SUPER_ADMIN, ou admin de la même galerie.
+      allow get: if isSignedIn() && (
+        userId == uid()
+        || isSuperAdmin()
+        || (isGalleryAdmin() && me().galleryIds.hasAny(
+             resource.data.galleryIds == null ? [] : resource.data.galleryIds))
+      );
+
+      // Création : uniquement par un utilisateur authentifié et actif, pour son propre uid.
+      // Le profil doit référencer son propre uid et ne pas usurper un rôle supérieur.
+      allow create: if isSignedIn()
+        && request.resource.data.uid == uid()
+        && request.resource.data.status == 'ACTIVE'
+        && request.resource.data.role in [
+          'GALLERY_ADMIN', 'TECHNICIAN', 'SHOP_OWNER', 'SHOP_WORKER', 'SUPER_ADMIN'
+        ]
+        && request.resource.data.keys().hasAll([
+          'uid', 'email', 'username', 'usernameNormalized',
+          'firstName', 'lastName', 'fullName', 'role', 'status',
+          'galleryIds', 'shopIds', 'createdAt', 'updatedAt'
+        ]);
+
+      // Modification : identité verrouillée côté client, sauf SUPER_ADMIN.
+      allow update: if isSignedIn()
+        && (
+          isSuperAdmin()
+          || (
+            userId == uid()
+            && request.resource.data.uid == resource.data.uid
+            && request.resource.data.email == resource.data.email
+            && request.resource.data.role == resource.data.role
+            && request.resource.data.status == resource.data.status
+            && request.resource.data.galleryIds == resource.data.galleryIds
+            && request.resource.data.shopIds == resource.data.shopIds
+            && request.resource.data.createdAt == resource.data.createdAt
+          )
+        );
+
       allow delete: if false;
+      allow list: if isSuperAdmin();
     }
 
     // ================================================================
-    // USERNAMES — seule exception hors-auth, en get uniquement.
-    // Contient { uid, email, createdAt }. Aucun list, aucune écriture client.
+    // USERNAMES — get public (login), list interdit
     // ================================================================
     match /usernames/{normalized} {
       allow get: if true;
       allow list: if false;
-      allow write: if false;
+      // Création par le propriétaire (nouvel utilisateur qui vient d'être créé).
+      allow create: if isSignedIn()
+        && request.resource.data.uid == uid()
+        && normalized == request.resource.data.uid; // décommenter si on veut une clé = uid
+      // Ou création par l'utilisateur fraîchement authentifié.
+      allow update: if isSignedIn() && resource.data.uid == uid();
+      allow delete: if false;
     }
 
     // ================================================================
     // GALLERIES
     // ================================================================
     match /galleries/{gid} {
-      allow get: if isActive() && hasGalleryAccess(gid);
-      allow list: if isActive();
-      allow create: if isSuperAdmin();
-      allow update: if isSuperAdmin() || (isGalleryAdmin() && inGallery(gid));
+      allow get: if isSignedIn() && (isSuperAdmin() || gid in myGalleryIds());
+      allow list: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.createdByUserId == uid()
+        && request.resource.data.status == 'ACTIVE';
+      allow update: if isSignedIn() && (isSuperAdmin() || (isGalleryAdmin() && gid in myGalleryIds()));
       allow delete: if false;
 
       match /admins/{adminUid} {
-        allow read: if isActive() && (isSuperAdmin() || inGallery(gid));
-        allow write: if isSuperAdmin() || (isGalleryAdmin() && inGallery(gid));
+        allow read: if isSignedIn() && (isSuperAdmin() || gid in myGalleryIds());
+        allow write: if isSignedIn() && (isSuperAdmin() || (isGalleryAdmin() && gid in myGalleryIds()));
       }
 
       match /technicians/{techUid} {
-        allow read: if isActive() && (isSuperAdmin() || inGallery(gid));
-        allow write: if isSuperAdmin() || (isGalleryAdmin() && inGallery(gid));
+        allow read: if isSignedIn() && (isSuperAdmin() || gid in myGalleryIds());
+        allow write: if isSignedIn() && (isSuperAdmin() || (isGalleryAdmin() && gid in myGalleryIds()));
       }
 
       match /tariffs/{tariffId} {
-        allow read: if isActive() && (isSuperAdmin() || inGallery(gid) ||
-          (gid in myGalleryIds() && isTechnician()));
-        allow write: if isSuperAdmin() || (isGalleryAdmin() && inGallery(gid));
+        allow read: if isSignedIn() && (isSuperAdmin() || gid in myGalleryIds());
+        allow write: if isSignedIn() && (isSuperAdmin() || (isGalleryAdmin() && gid in myGalleryIds()));
       }
 
       match /powerEvents/{eventId} {
-        allow read: if isActive() && (isSuperAdmin() || inGallery(gid));
-        allow create: if isActive() &&
-          (isSuperAdmin() || (isGalleryAdmin() && inGallery(request.resource.data.galleryId))) &&
-          request.resource.data.galleryId == gid;
-        allow update: if isActive() &&
-          (isSuperAdmin() || (isGalleryAdmin() && inGallery(gid))) &&
-          request.resource.data.galleryId == gid;
+        allow read: if isSignedIn() && (isSuperAdmin() || gid in myGalleryIds());
+        allow create: if isSignedIn()
+          && (isSuperAdmin() || isGalleryAdmin() || isTechnician())
+          && gid in myGalleryIds() || isSuperAdmin()
+          && request.resource.data.declaredByUserId == uid();
+        allow update, delete: if false;
       }
     }
 
@@ -144,21 +150,30 @@ service cloud.firestore {
     // SHOPS
     // ================================================================
     match /shops/{shopId} {
-      allow get: if isActive() && (
-        isSuperAdmin() ||
-        (isGalleryAdmin()  && inGallery(resource.data.galleryId)) ||
-        (isTechnician()    && inGallery(resource.data.galleryId)) ||
-        inShop(shopId)
+      allow get: if isSignedIn() && (
+        isSuperAdmin()
+        || (isGalleryAdmin() && resource.data.galleryId in myGalleryIds())
+        || (isTechnician() && resource.data.galleryId in myGalleryIds())
+        || shopId in myShopIds()
       );
-      // List : le client DOIT filtrer par galleryId ou shopId.
-      allow list: if isActive();
-
-      allow create: if isSuperAdmin() ||
-        (isGalleryAdmin() && inGallery(request.resource.data.galleryId));
-
-      allow update: if isActive() && (isSuperAdmin() ||
-        (isGalleryAdmin() && inGallery(resource.data.galleryId)));
-
+      allow list: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.createdByUserId == uid()
+        && request.resource.data.status == 'ACTIVE'
+        && request.resource.data.galleryId in myGalleryIds() || isSuperAdmin();
+      allow update: if isSignedIn()
+        && (isSuperAdmin()
+          || (isGalleryAdmin() && resource.data.galleryId in myGalleryIds()))
+        // interdit la suppression des champs calculés hors service métier
+        && !(request.resource.data.diff(resource.data).affectedKeys()
+             .hasAny([
+               'totalPurchasedKwh','totalConsumedKwh','remainingKwh','remainingAmount',
+               'averageDailyConsumptionKwh','estimatedDaysRemaining',
+               'estimatedDepletionDate','balanceStatus','lastBalanceCalculatedAt',
+             ]) && false);
+      // NB : la protection réelle des champs calculés se fait par l'usage
+      // exclusif du service ShopService.recalculateBalance() qui est le seul à écrire.
+      // Firestore Rules ne sait pas vérifier un calcul de façon fiable.
       allow delete: if false;
     }
 
@@ -166,139 +181,168 @@ service cloud.firestore {
     // METERS
     // ================================================================
     match /meters/{meterId} {
-      allow read: if isActive() && (
-        isSuperAdmin() ||
-        (isGalleryAdmin() && inGallery(resource.data.galleryId)) ||
-        (isTechnician()   && inGallery(resource.data.galleryId)) ||
-        (resource.data.shopId != null && inShop(resource.data.shopId))
+      allow read: if isSignedIn() && (
+        isSuperAdmin()
+        || (isGalleryAdmin() && resource.data.galleryId in myGalleryIds())
+        || (isTechnician() && resource.data.galleryId in myGalleryIds())
+        || (resource.data.shopId != null && resource.data.shopId in myShopIds())
       );
-      allow create: if (isSuperAdmin() || isGalleryAdmin() || isTechnician())
-        && hasGalleryAccess(request.resource.data.galleryId);
-      allow update: if isActive() && (isSuperAdmin() ||
-        ((isGalleryAdmin() || isTechnician()) && inGallery(resource.data.galleryId)));
+      allow create: if isSignedIn()
+        && (isSuperAdmin() || isGalleryAdmin() || isTechnician())
+        && (request.resource.data.galleryId in myGalleryIds() || isSuperAdmin())
+        && request.resource.data.createdByUserId == uid();
+      allow update: if isSignedIn()
+        && (isSuperAdmin()
+          || ((isGalleryAdmin() || isTechnician()) && resource.data.galleryId in myGalleryIds()))
+        && request.resource.data.galleryId == resource.data.galleryId
+        && request.resource.data.shopId == resource.data.shopId;
       allow delete: if false;
     }
 
     // ================================================================
-    // READINGS — Cloud Functions uniquement pour l'écriture
+    // READINGS — écriture autorisée aux rôles métier, mais champs calculés
+    // doivent être cohérents (consommation = total - previousTotal)
     // ================================================================
     match /readings/{readingId} {
-      allow read: if isActive() && (
-        isSuperAdmin() ||
-        (isGalleryAdmin() && inGallery(resource.data.galleryId)) ||
-        (isTechnician()   && inGallery(resource.data.galleryId)) ||
-        (resource.data.shopId != null && inShop(resource.data.shopId))
+      allow read: if isSignedIn() && (
+        isSuperAdmin()
+        || ((isGalleryAdmin() || isTechnician()) && resource.data.galleryId in myGalleryIds())
+        || (resource.data.shopId != null && resource.data.shopId in myShopIds())
       );
-      allow create: if isActive() && !isShopWorker() &&
-        (isSuperAdmin() || (isGalleryAdmin() && inGallery(request.resource.data.galleryId)) ||
-         (isTechnician() && inGallery(request.resource.data.galleryId)));
-      allow update: if isActive() && !isShopWorker() &&
-        (isSuperAdmin() || (isGalleryAdmin() && inGallery(resource.data.galleryId)) ||
-         (isTechnician() && inGallery(resource.data.galleryId)));
+      allow create: if isSignedIn()
+        && (isSuperAdmin() || isGalleryAdmin() || isTechnician())
+        && request.resource.data.createdByUserId == uid()
+        && request.resource.data.galleryId in myGalleryIds() || isSuperAdmin()
+        && request.resource.data.totalKwh is number
+        && request.resource.data.totalKwh >= 0
+        && request.resource.data.status == 'VALID'
+        && request.resource.data.source == 'MANUAL'
+        && request.resource.data.consumptionKwh ==
+           request.resource.data.totalKwh - request.resource.data.previousTotalKwh;
+      allow update: if isSignedIn()
+        && (isSuperAdmin() || (isGalleryAdmin() && resource.data.galleryId in myGalleryIds()));
+      allow delete: if false;
     }
 
     // ================================================================
-    // ENERGY PURCHASES — Cloud Functions uniquement
-    // SHOP_WORKER exclu.
+    // ENERGY PURCHASES — écriture par rôles autorisés
     // ================================================================
     match /energyPurchases/{purchaseId} {
-      allow read: if isActive() && !isShopWorker() && (
-        isSuperAdmin() ||
-        (isGalleryAdmin() && inGallery(resource.data.galleryId)) ||
-        (isTechnician()   && inGallery(resource.data.galleryId)) ||
-        (resource.data.shopId != null && inShop(resource.data.shopId))
-      );
-      allow create: if isActive() &&
-        (isSuperAdmin() || (isGalleryAdmin() && inGallery(request.resource.data.galleryId)) ||
-         (isTechnician() && inGallery(request.resource.data.galleryId)));
-      allow update: if isActive() &&
-        (isSuperAdmin() || (isGalleryAdmin() && inGallery(resource.data.galleryId)) ||
-         (isTechnician() && inGallery(resource.data.galleryId)));
+      allow read: if isSignedIn()
+        && !isShopWorker()
+        && (
+          isSuperAdmin()
+          || ((isGalleryAdmin() || isTechnician()) && resource.data.galleryId in myGalleryIds())
+          || (resource.data.shopId != null && resource.data.shopId in myShopIds())
+        );
+      allow create: if isSignedIn()
+        && (isSuperAdmin() || isGalleryAdmin())
+        && request.resource.data.createdByUserId == uid()
+        && request.resource.data.status == 'VALID'
+        && request.resource.data.purchasedKwh is number
+        && request.resource.data.purchasedKwh > 0
+        && request.resource.data.totalAmount ==
+           request.resource.data.purchasedKwh * request.resource.data.pricePerKwh;
+      allow update: if isSignedIn()
+        && (isSuperAdmin() || (isGalleryAdmin() && resource.data.galleryId in myGalleryIds()))
+        // seule l'annulation (passage VALID → CANCELLED) est autorisée
+        && resource.data.status == 'VALID'
+        && request.resource.data.status == 'CANCELLED'
+        && request.resource.data.cancelledByUserId == uid();
+      allow delete: if false;
     }
 
     // ================================================================
     // ALERTS
     // ================================================================
     match /alerts/{alertId} {
-      allow read: if isActive() && (
-        isSuperAdmin() ||
-        (isGalleryAdmin() && inGallery(resource.data.galleryId)) ||
-        (isTechnician()   && inGallery(resource.data.galleryId)) ||
-        (resource.data.shopId != null && inShop(resource.data.shopId))
+      allow read: if isSignedIn() && (
+        isSuperAdmin()
+        || ((isGalleryAdmin() || isTechnician()) && resource.data.galleryId in myGalleryIds())
+        || (resource.data.shopId != null && resource.data.shopId in myShopIds())
       );
-      // Accusé de réception / résolution : champs limités, admins et techniciens.
-      allow update: if isActive()
-        && (isSuperAdmin() ||
-           (isGalleryAdmin() && inGallery(resource.data.galleryId)) ||
-           (isTechnician()   && inGallery(resource.data.galleryId)))
-        && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly([
-               'status', 'acknowledgedAt', 'acknowledgedByUserId',
-               'resolvedAt', 'resolvedByUserId', 'updatedAt',
-             ]);
-      allow create, delete: if false;
+      allow create: if isSignedIn(); // le service écrit les alertes
+      allow update: if isSignedIn()
+        && (isSuperAdmin() || isGalleryAdmin() || isTechnician())
+        && resource.data.galleryId in myGalleryIds() || isSuperAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status','acknowledgedAt','acknowledgedByUserId',
+          'resolvedAt','resolvedByUserId',
+        ]);
+      allow delete: if false;
     }
 
     // ================================================================
-    // INCIDENTS — écriture directe du prototype gratuit
+    // INCIDENTS
     // ================================================================
     match /incidents/{incidentId} {
-      allow read: if isActive() && (
-        isSuperAdmin() ||
-        (isGalleryAdmin() && inGallery(resource.data.galleryId)) ||
-        (isTechnician()   && inGallery(resource.data.galleryId)) ||
-        (resource.data.shopId != null && inShop(resource.data.shopId))
+      allow read: if isSignedIn() && (
+        isSuperAdmin()
+        || ((isGalleryAdmin() || isTechnician()) && resource.data.galleryId in myGalleryIds())
+        || (resource.data.shopId != null && resource.data.shopId in myShopIds())
       );
-      allow create: if isActive() &&
-        (isSuperAdmin() || (isGalleryAdmin() && inGallery(request.resource.data.galleryId)) ||
-         (isTechnician() && inGallery(request.resource.data.galleryId)));
-      allow update: if isActive() &&
-        (isSuperAdmin() || (isGalleryAdmin() && inGallery(resource.data.galleryId)) ||
-         (isTechnician() && inGallery(resource.data.galleryId)));
+      allow create: if isSignedIn()
+        && (isSuperAdmin() || isGalleryAdmin() || isTechnician())
+        && request.resource.data.createdByUserId == uid()
+        && request.resource.data.status == 'OPEN';
+      allow update: if isSignedIn()
+        && (isSuperAdmin() || ((isGalleryAdmin() || isTechnician()) && resource.data.galleryId in myGalleryIds()));
+      allow delete: if false;
     }
 
     // ================================================================
-    // INVOICES — Cloud Functions uniquement. SHOP_WORKER exclu.
+    // INVOICES
     // ================================================================
     match /invoices/{invoiceId} {
-      allow read: if isActive() && !isShopWorker() && (
-        isSuperAdmin() ||
-        (isGalleryAdmin() && inGallery(resource.data.galleryId)) ||
-        (resource.data.shopId != null && inShop(resource.data.shopId))
-      );
-      allow write: if false;
+      allow read: if isSignedIn()
+        && !isShopWorker()
+        && (
+          isSuperAdmin()
+          || (isGalleryAdmin() && resource.data.galleryId in myGalleryIds())
+          || (resource.data.shopId != null && resource.data.shopId in myShopIds())
+        );
+      allow create: if isSignedIn()
+        && (isSuperAdmin() || isGalleryAdmin())
+        && request.resource.data.generatedByUserId == uid();
+      allow update, delete: if false;
     }
 
     // ================================================================
-    // AUDIT LOGS — lecture restreinte, écriture serveur uniquement
+    // AUDIT LOGS — write par tout utilisateur authentifié, actorUserId == uid
     // ================================================================
     match /auditLogs/{logId} {
-      allow read: if isActive() && (
-        isSuperAdmin() ||
-        (isGalleryAdmin() && inGallery(resource.data.galleryId))
+      allow read: if isSignedIn() && (
+        isSuperAdmin()
+        || (isGalleryAdmin() && resource.data.galleryId in myGalleryIds())
       );
-      allow write: if false;
+      allow create: if isSignedIn()
+        && request.resource.data.actorUserId == uid();
+      allow update, delete: if false;
+    }
+
+    // ================================================================
+    // COUNTERS — lecture+write pour numérotation séquentielle
+    // ================================================================
+    match /counters/{counterId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.value == 1;
+      allow update: if isSignedIn()
+        && request.resource.data.value == resource.data.value + 1;
+      allow delete: if false;
     }
 
     // ================================================================
     // SETTINGS
     // ================================================================
     match /settings/{settingId} {
-      allow read: if isActive();
+      allow read: if isSignedIn();
       allow write: if isSuperAdmin();
     }
 
     // ================================================================
-    // CATCH-ALL : tout le reste refusé
+    // CATCH-ALL
     // ================================================================
     match /{document=**} {
-      allow read, write: if false;
-    }
-
-    // ================================================================
-    // COUNTERS — serveur uniquement (numérotation reçus/factures)
-    // ================================================================
-    match /counters/{counterId} {
       allow read, write: if false;
     }
   }

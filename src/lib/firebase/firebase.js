@@ -13,6 +13,7 @@ import {
   persistentLocalCache,
   persistentMultipleTabManager,
 } from 'firebase/firestore';
+import { getStorage, connectStorageEmulator } from 'firebase/storage';
 import env, { assertFirebaseEnv } from '@/config/env';
 
 assertFirebaseEnv();
@@ -32,6 +33,7 @@ try {
 
 export const auth = getAuth(app);
 export const db = firestore;
+export const storage = getStorage(app);
 
 // Persistance Auth : localStorage en prod, mémoire en dev pour éviter les fuites entre tests.
 setPersistence(auth, env.useEmulators ? inMemoryPersistence : browserLocalPersistence).catch(() => {
@@ -41,6 +43,7 @@ setPersistence(auth, env.useEmulators ? inMemoryPersistence : browserLocalPersis
 if (env.useEmulators) {
   connectAuthEmulator(auth, `http://${env.emulators.authHost}`, { disableWarnings: true });
   connectFirestoreEmulator(db, ...env.emulators.firestoreHost.split(':'));
+  connectStorageEmulator(storage, ...env.emulators.storageHost.split(':'));
 }
 
 export { app };

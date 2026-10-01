@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { Store, AlertTriangle, Zap, Plus } from 'lucide-react';
+import { Store, AlertTriangle, Plus } from 'lucide-react';
 import StatCard from '@/components/common/StatCard';
 import Button from '@/components/ui/Button';
 import { useAuth } from '@/features/auth/hooks/useAuth';
@@ -11,7 +11,22 @@ import StatusBadge from '@/components/common/StatusBadge';
 import EmptyState from '@/components/common/EmptyState';
 import { formatKwh, formatDateTime } from '@/lib/formatters';
 
+
+import { useEffect } from 'react';
+import { runCheckLowCredits } from '@/lib/services/alerts';
+
 export default function GalleryAdminDashboard() {
+  useEffect(() => {
+    const key = 'gem.lastCheckLowCredits';
+    const last = Number(localStorage.getItem(key) ?? 0);
+    const oneDay = 24 * 60 * 60 * 1000;
+    if (Date.now() - last > oneDay) {
+      runCheckLowCredits()
+        .then(() => localStorage.setItem(key, String(Date.now())))
+        .catch((err) => console.warn('[checkLowCredits] failed', err));
+    }
+  }, []);
+
   const navigate = useNavigate();
   const { galleryIds } = useAuth();
   const galleryId = galleryIds?.[0];

@@ -1,13 +1,26 @@
-import { Building2, Store, AlertTriangle, Zap } from 'lucide-react';
+import { Building2, AlertTriangle } from 'lucide-react';
 import StatCard from '@/components/common/StatCard';
 import { useGalleries } from '@/features/galleries/hooks/useGalleries';
 import { useAlertsByGallery } from '@/features/alerts/hooks/useAlerts';
-import { useAuth } from '@/features/auth/hooks/useAuth';
 import { formatDateTime } from '@/lib/formatters';
 import EmptyState from '@/components/common/EmptyState';
 
+
+import { useEffect } from 'react';
+import { runCheckLowCredits } from '@/lib/services/alerts';
+
 export default function SuperAdminDashboard() {
-  const { profile } = useAuth();
+  useEffect(() => {
+    const key = 'gem.lastCheckLowCredits';
+    const last = Number(localStorage.getItem(key) ?? 0);
+    const oneDay = 24 * 60 * 60 * 1000;
+    if (Date.now() - last > oneDay) {
+      runCheckLowCredits()
+        .then(() => localStorage.setItem(key, String(Date.now())))
+        .catch((err) => console.warn('[checkLowCredits] failed', err));
+    }
+  }, []);
+
   const { data: galleries } = useGalleries();
   // Alerte globale : utilise la première galerie comme proxy MVP.
   // Vue agrégée multi-galerie : reportée (nécessite une callable d'agrégation).

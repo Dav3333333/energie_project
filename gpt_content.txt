@@ -1,0 +1,732 @@
+]633;E;echo "============================================================";b975d59a-5d3f-4fb6-b05c-a1f893c5d843]633;C============================================================
+DIAGNOSTIC FIREBASE / NETLIFY / PWA
+Projet: galerie-energie-manager-1
+============================================================
+
+
+
+############################################################
+### FILE: firebase.json
+############################################################
+
+{
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "functions": {
+    "source": "functions",
+    "runtime": "nodejs20"
+  },
+  "emulators": {
+    "auth":       { "port": 9099 },
+    "firestore":  { "port": 8080 },
+    "functions":  { "port": 5001 },
+    "ui":         { "enabled": true, "port": 4000 },
+    "singleProjectMode": true
+  }
+}
+
+
+############################################################
+### FILE: netlify.toml
+############################################################
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+
+############################################################
+### FILE: vite.config.js
+############################################################
+
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
+import path from 'node:path';
+
+export default defineConfig({
+  plugins: [
+    react(),
+    VitePWA({
+      registerType: 'prompt',
+      injectRegister: null, // enregistrement manuel via registerSW.js
+      strategies: 'generateSW',
+      srcDir: 'src',
+      filename: 'sw.js',
+      devOptions: {
+        enabled: false, // activer ponctuellement pour tester le SW en dev
+        type: 'module',
+        navigateFallback: 'index.html',
+      },
+      includeAssets: [
+        'favicon.svg',
+        'icons/apple-touch-icon.png',
+        'robots.txt',
+      ],
+      manifest: {
+        name: 'Galerie Énergie Manager',
+        short_name: 'GEM',
+        description:
+          "Gestion manuelle de la distribution, du suivi et de la facturation d'électricité dans les galeries commerciales.",
+        lang: 'fr',
+        dir: 'ltr',
+        start_url: '/',
+        scope: '/',
+        display: 'standalone',
+        orientation: 'portrait-primary',
+        theme_color: '#0ea5e9',
+        background_color: '#ffffff',
+        categories: ['business', 'productivity', 'utilities'],
+        icons: [
+          { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+          {
+            src: '/icons/icon-maskable-192.png',
+            sizes: '192x192',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
+          {
+            src: '/icons/icon-maskable-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
+        ],
+        shortcuts: [
+          {
+            name: 'Nouveau relevé',
+            short_name: 'Relevé',
+            url: '/readings/new',
+            icons: [{ src: '/icons/icon-192.png', sizes: '192x192' }],
+          },
+          {
+            name: 'Nouvel achat kWh',
+            short_name: 'Achat',
+            url: '/energy-purchases/new',
+            icons: [{ src: '/icons/icon-192.png', sizes: '192x192' }],
+          },
+        ],
+      },
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,svg,png,webp,woff2}'],
+        navigateFallback: '/index.html',
+        navigateFallbackDenylist: [
+          /^\/__\/.*/, // Firebase Auth handler
+          /^\/api\/.*/, // futur backend custom
+        ],
+        cleanupOutdatedCaches: true,
+        clientsClaim: false, // prompt-based update
+        skipWaiting: false,
+        runtimeCaching: [
+          // --- Google Fonts ---
+          {
+            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'google-fonts-stylesheets',
+              expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 },
+            },
+          },
+          {
+            urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'google-fonts-webfonts',
+              expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+
+          // --- Firebase Storage : images reçus, PDF ---
+          {
+            urlPattern: /^https:\/\/firebasestorage\.googleapis\.com\/.*/i,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'firebase-storage',
+              expiration: { maxEntries: 60, maxAgeSeconds: 60 * 60 * 24 * 14 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+
+          // --- Firebase Auth / Firestore / Functions : JAMAIS cachés ---
+          {
+            urlPattern: /^https:\/\/(identitytoolkit|securetoken)\.googleapis\.com\/.*/i,
+            handler: 'NetworkOnly',
+          },
+          {
+            urlPattern: /^https:\/\/firestore\.googleapis\.com\/.*/i,
+            handler: 'NetworkOnly',
+          },
+          {
+            urlPattern: /^https:\/\/.*\.cloudfunctions\.net\/.*/i,
+            handler: 'NetworkOnly',
+          },
+          {
+            urlPattern: /^https:\/\/.*\.run\.app\/.*/i, // Functions 2nd gen
+            handler: 'NetworkOnly',
+          },
+          {
+            urlPattern: /^https:\/\/firebaseinstallations\.googleapis\.com\/.*/i,
+            handler: 'NetworkOnly',
+          },
+        ],
+      },
+    }),
+  ],
+  resolve: {
+    alias: { '@': path.resolve(__dirname, './src') },
+  },
+  server: { port: 5173, open: false, host: true },
+  preview: { port: 4173, host: true },
+  build: {
+    outDir: 'dist',
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          firebase: [
+            'firebase/app',
+            'firebase/auth',
+            'firebase/firestore',
+          ],
+          charts: ['recharts'],
+          pdf: ['jspdf', 'jspdf-autotable'],
+        },
+      },
+    },
+  },
+});
+
+
+############################################################
+### FILE: package.json
+############################################################
+
+{
+  "name": "galerie-energie-manager",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"src/**/*.{js,jsx,css,json}\" \"functions/src/**/*.js\"",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:rules": "firebase emulators:exec --only firestore \"vitest run src/tests/rules\"",
+    "emulators": "firebase emulators:start",
+    "deploy:netlify": "npm run build && netlify deploy --prod --dir=dist",
+    "deploy:rules": "firebase deploy --only firestore:rules,firestore:indexes"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^3.9.0",
+    "@tanstack/react-query": "^5.51.0",
+    "date-fns": "^3.6.0",
+    "firebase": "^10.13.0",
+    "jspdf": "^2.5.1",
+    "jspdf-autotable": "^3.8.2",
+    "lucide-react": "^0.427.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-hook-form": "^7.52.1",
+    "react-router-dom": "^6.26.0",
+    "recharts": "^2.12.7",
+    "sonner": "^1.5.0",
+    "zod": "^3.23.8",
+    "zustand": "^4.5.4"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.9.0",
+    "@firebase/rules-unit-testing": "^3.0.3",
+    "@testing-library/jest-dom": "^6.4.8",
+    "@testing-library/react": "^16.0.0",
+    "@testing-library/user-event": "^14.5.2",
+    "@vitejs/plugin-react": "^4.3.1",
+    "@vitest/coverage-v8": "^2.0.5",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^9.9.0",
+    "eslint-plugin-react": "^7.35.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.4.9",
+    "firebase-functions-test": "^3.3.0",
+    "globals": "^15.9.0",
+    "jsdom": "^25.0.0",
+    "postcss": "^8.4.41",
+    "prettier": "^3.3.3",
+    "tailwindcss": "^3.4.10",
+    "vite": "^5.4.0",
+    "vite-plugin-pwa": "^1.3.0",
+    "vitest": "^2.0.5"
+  }
+}
+
+
+
+############################################################
+### FILE: src/config/env.js
+############################################################
+
+/**
+ * Centralise l'accès aux variables d'environnement Vite.
+ * Aucune clé secrète ici : uniquement des valeurs publiques du Web SDK Firebase.
+ */
+const env = {
+  firebase: {
+    apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+    appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  },
+  useEmulators: import.meta.env.VITE_USE_FIREBASE_EMULATORS === 'true',
+  emulators: {
+    authHost: import.meta.env.VITE_FIREBASE_AUTH_EMULATOR_HOST ?? '127.0.0.1:9099',
+    firestoreHost: import.meta.env.VITE_FIREBASE_FIRESTORE_EMULATOR_HOST ?? '127.0.0.1:8080',
+    functionsHost: import.meta.env.VITE_FIREBASE_FUNCTIONS_EMULATOR_HOST ?? '127.0.0.1:5001',
+    storageHost: import.meta.env.VITE_FIREBASE_STORAGE_EMULATOR_HOST ?? '127.0.0.1:9199',
+  },
+  appCheck: {
+    recaptchaV3SiteKey: import.meta.env.VITE_RECAPTCHA_V3_SITE_KEY ?? '',
+  },
+};
+
+/**
+ * Vérifie que toutes les variables Firebase requises sont présentes.
+ * Appelée au démarrage pour échouer vite si l'environnement est mal configuré.
+ */
+export function assertFirebaseEnv() {
+  const missing = Object.entries(env.firebase)
+    .filter(([, value]) => !value)
+    .map(([key]) => `VITE_FIREBASE_${key.replace(/([A-Z])/g, '_$1').toUpperCase()}`);
+
+  if (missing.length > 0) {
+    throw new Error(`Variables d'environnement manquantes : ${missing.join(', ')}`);
+  }
+}
+
+export default env;
+
+
+############################################################
+### FILE: src/lib/firebase/firebase.js
+############################################################
+
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import {
+  getAuth,
+  connectAuthEmulator,
+  setPersistence,
+  browserLocalPersistence,
+  inMemoryPersistence,
+} from 'firebase/auth';
+import {
+  getFirestore,
+  connectFirestoreEmulator,
+  enableIndexedDbPersistence,
+  initializeFirestore,
+  CACHE_SIZE_UNLIMITED,
+} from 'firebase/firestore';
+import env, { assertFirebaseEnv } from '@/config/env';
+
+assertFirebaseEnv();
+
+const app = getApps().length ? getApp() : initializeApp(env.firebase);
+
+// Firestore — persistance locale tentée (lecture offline), fallback silencieux si non supportée.
+let firestore;
+try {
+  firestore = initializeFirestore(app, {
+    cacheSizeBytes: CACHE_SIZE_UNLIMITED,
+    ignoreUndefinedProperties: true,
+  });
+} catch {
+  firestore = getFirestore(app);
+}
+
+export const auth = getAuth(app);
+export const db = firestore;
+
+// Persistance Auth : localStorage en prod, mémoire en dev pour éviter les fuites entre tests.
+setPersistence(auth, env.useEmulators ? inMemoryPersistence : browserLocalPersistence).catch(() => {
+  // Persistence indisponible — on continue avec le comportement par défaut.
+});
+
+// Persistance Firestore (offline lecture seule). Echec = dégradation silencieuse.
+enableIndexedDbPersistence(db).catch(() => {
+  // Multi-onglets ou navigateur non compatible — on continue sans persistance locale.
+});
+
+if (env.useEmulators) {
+  connectAuthEmulator(auth, `http://${env.emulators.authHost}`, { disableWarnings: true });
+  connectFirestoreEmulator(db, ...env.emulators.firestoreHost.split(':'));
+}
+
+export { app };
+
+
+############################################################
+### FILE: src/lib/firebase/callables.js
+############################################################
+
+import {
+  acknowledgeAlert,
+  archiveGallery,
+  archiveManagedUser,
+  archiveMeter,
+  archiveShop,
+  cancelEnergyPurchase,
+  createEnergyPurchase,
+  createGallery,
+  createIncident,
+  createManualPowerEvent,
+  createManualReading,
+  createMeter,
+  createShop,
+  generateInvoice,
+  resolveAlert,
+  updateGallery,
+  updateIncidentStatus,
+  updateManagedUser,
+  updateMeter,
+  updateShop,
+} from './directOperations';
+import { getFunctions, connectFunctionsEmulator, httpsCallable } from 'firebase/functions';
+import { app } from './firebase';
+import env from '@/config/env';
+
+const functions = getFunctions(app, 'us-central1');
+if (env.useEmulators) {
+  connectFunctionsEmulator(functions, ...env.emulators.functionsHost.split(':'));
+}
+
+const callFunction = (name) => async (payload = {}) => httpsCallable(functions, name)(payload);
+
+export const callables = {
+  createManagedUser: callFunction('createManagedUser'),
+  updateManagedUser,
+  archiveManagedUser,
+  listUsersByGallery: callFunction('listUsersByGallery'),
+  createGallery,
+  updateGallery,
+  archiveGallery,
+  createShop,
+  updateShop,
+  archiveShop,
+  createMeter,
+  updateMeter,
+  archiveMeter,
+  createManualReading,
+  createEnergyPurchase,
+  cancelEnergyPurchase,
+  createManualPowerEvent,
+  createIncident,
+  updateIncidentStatus,
+  acknowledgeAlert,
+  resolveAlert,
+  generateInvoice,
+};
+
+/**
+ * Normalise une erreur callable en { code, message }.
+ */
+export function callableError(err) {
+  return {
+    code: err?.code ?? 'unknown',
+    message: err?.message ?? 'Une erreur est survenue.',
+    details: err?.details ?? null,
+  };
+}
+
+
+############################################################
+### FILE: src/lib/pwa/registerSW.js
+############################################################
+
+import { registerSW } from 'virtual:pwa-register';
+
+let updateSW = null;
+
+/**
+ * Enregistre le Service Worker et retourne un objet { updateSW, onNeedRefresh, onOfflineReady }.
+ * Ne fait rien en cas d'échec : l'app reste fonctionnelle sans SW.
+ */
+export function initServiceWorker({ onNeedRefresh, onOfflineReady, onError } = {}) {
+  try {
+    updateSW = registerSW({
+      immediate: true,
+      onNeedRefresh() {
+        if (typeof onNeedRefresh === 'function') onNeedRefresh();
+      },
+      onOfflineReady() {
+        if (typeof onOfflineReady === 'function') onOfflineReady();
+      },
+      onRegisterError(error) {
+        if (typeof onError === 'function') onError(error);
+      },
+    });
+  } catch (error) {
+    if (typeof onError === 'function') onError(error);
+  }
+  return { updateSW: () => updateSW?.() };
+}
+
+
+############################################################
+### FILE: src/features/users/services/usersService.js
+############################################################
+
+import { doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { db } from '@/lib/firebase/firebase';
+import { callables } from '@/lib/firebase/callables';
+
+export async function fetchUser(uid) {
+  const snap = await getDoc(doc(db, 'users', uid));
+  return snap.exists() ? { uid: snap.id, ...snap.data() } : null;
+}
+
+export function subscribeUser(uid, cb, onError) {
+  return onSnapshot(doc(db, 'users', uid), (s) => {
+    cb(s.exists() ? { uid: s.id, ...s.data() } : null);
+  }, onError);
+}
+
+export async function listUsersByGallery(galleryId) {
+  const { data } = await callables.listUsersByGallery(galleryId ? { galleryId } : {});
+  return data.users;
+}
+
+
+############################################################
+### FILE: functions/package.json
+############################################################
+
+{
+  "name": "galerie-energie-manager-functions",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "engines": {
+    "node": "20"
+  },
+  "main": "src/index.js",
+  "scripts": {
+    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint .",
+    "lint:fix": "ESLINT_USE_FLAT_CONFIG=false eslint . --fix",
+    "serve": "firebase emulators:start --only functions",
+    "shell": "firebase functions:shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.4.0",
+    "firebase-functions": "^6.0.0",
+    "zod": "^3.23.8",
+    "pdfkit": "^0.15.0",
+    "pdfkit-table": "^0.1.99"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "eslint-config-google": "^0.14.0"
+  }
+}
+
+
+############################################################
+### FILE: functions/src/index.js
+############################################################
+
+// Users
+const { createManagedUser } = require('./callable/createManagedUser');
+const { updateManagedUser } = require('./callable/updateManagedUser');
+const { archiveManagedUser } = require('./callable/archiveManagedUser');
+const { listUsersByGallery } = require('./callable/listUsersByGallery');
+
+// Galeries / boutiques / compteurs
+const galleryCallables = require('./callable/gallery');
+const shopCallables = require('./callable/shop');
+const meterCallables = require('./callable/meter');
+
+// Relevés
+const { createManualReading } = require('./callable/createManualReading');
+
+// Achats kWh
+const { createEnergyPurchase } = require('./callable/createEnergyPurchase');
+const { cancelEnergyPurchase } = require('./callable/cancelEnergyPurchase');
+
+// Alertes
+const alertActions = require('./callable/alertActions');
+
+// Power events
+const { createManualPowerEvent } = require('./callable/createManualPowerEvent');
+
+// Incidents
+const incidentCallables = require('./callable/incident');
+
+// Factures
+const { generateInvoice } = require('./callable/generateInvoice');
+
+// Scheduled
+const { checkLowCredits } = require('./scheduled/checkLowCredits');
+
+// -------------------- Exports ----------------------------------------------
+exports.createManagedUser = createManagedUser;
+exports.updateManagedUser = updateManagedUser;
+exports.archiveManagedUser = archiveManagedUser;
+exports.listUsersByGallery = listUsersByGallery;
+
+exports.createGallery = galleryCallables.createGallery;
+exports.updateGallery = galleryCallables.updateGallery;
+exports.archiveGallery = galleryCallables.archiveGallery;
+
+exports.createShop = shopCallables.createShop;
+exports.updateShop = shopCallables.updateShop;
+exports.archiveShop = shopCallables.archiveShop;
+
+exports.createMeter = meterCallables.createMeter;
+exports.updateMeter = meterCallables.updateMeter;
+exports.archiveMeter = meterCallables.archiveMeter;
+
+exports.createManualReading = createManualReading;
+
+exports.createEnergyPurchase = createEnergyPurchase;
+exports.cancelEnergyPurchase = cancelEnergyPurchase;
+
+exports.acknowledgeAlert = alertActions.acknowledgeAlert;
+exports.resolveAlert = alertActions.resolveAlert;
+
+exports.createManualPowerEvent = createManualPowerEvent;
+
+exports.createIncident = incidentCallables.createIncident;
+exports.updateIncidentStatus = incidentCallables.updateIncidentStatus;
+
+exports.generateInvoice = generateInvoice;
+
+exports.checkLowCredits = checkLowCredits;
+
+
+############################################################
+### FILE: functions/src/config/admin.js
+############################################################
+
+const admin = require('firebase-admin');
+
+if (!admin.apps.length) {
+  admin.initializeApp();
+}
+
+const db = admin.firestore();
+const auth = admin.auth();
+const storage = admin.storage();
+
+db.settings({ ignoreUndefinedProperties: true });
+
+module.exports = { admin, db, auth, storage };
+
+
+############################################################
+### FILE: functions/src/callable/listUsersByGallery.js
+############################################################
+
+const { onCall } = require('firebase-functions/v2/https');
+const { z } = require('zod');
+const { validate } = require('../utils/validate');
+const { AppError, ERROR_CODES, toHttpsError } = require('../utils/errors');
+const { requireAuth, requireGalleryAccess } = require('../middleware/requireAuth');
+const { db } = require('../config/admin');
+const { ROLES } = require('../constants/roles');
+
+const Schema = z.object({ galleryId: z.string().min(1).optional() });
+
+/**
+ * Liste les utilisateurs rattachés à une galerie (admins, techniciens, owners, workers).
+ * Réservé aux SUPER_ADMIN et GALLERY_ADMIN de la galerie.
+ */
+exports.listUsersByGallery = onCall({ region: 'us-central1' }, async (req) => {
+  try {
+    const actor = await requireAuth(req);
+    if (actor.role !== ROLES.SUPER_ADMIN && actor.role !== ROLES.GALLERY_ADMIN) {
+      throw new AppError(ERROR_CODES.PERMISSION_DENIED, 'Rôle non autorisé.');
+    }
+    const input = validate(req.data, Schema);
+    if (actor.role === ROLES.GALLERY_ADMIN && !input.galleryId) {
+      throw new AppError(ERROR_CODES.INVALID_ARGUMENT, 'Une galerie est requise.');
+    }
+    if (input.galleryId) requireGalleryAccess(actor, input.galleryId);
+
+    let usersQuery = db.collection('users');
+    if (input.galleryId) {
+      usersQuery = usersQuery.where('galleryIds', 'array-contains', input.galleryId);
+    }
+    const snap = await usersQuery.limit(500).get();
+
+    const users = snap.docs.map((d) => {
+      const data = d.data();
+      return {
+        uid: data.uid ?? d.id,
+        email: data.email,
+        username: data.username,
+        fullName: data.fullName,
+        role: data.role,
+        status: data.status,
+        galleryIds: data.galleryIds ?? [],
+        shopIds: data.shopIds ?? [],
+      };
+    });
+    return { ok: true, users };
+  } catch (err) {
+    throw toHttpsError(err);
+  }
+});
+
+============================================================
+COMMANDES / ETAT FIREBASE
+============================================================
+
+### firebase use
+currentgestionf
+
+### firebase functions:list
+No functions found in project currentgestionf.
+
+### firebase projects:list
+- Preparing the list of your Firebase projects
+✔ Preparing the list of your Firebase projects
+[90m┌──────────────────────[39m[90m┬───────────────────────────[39m[90m┬────────────────[39m[90m┬──────────────────────┐[39m
+[90m│[39m[32m Project Display Name [39m[90m│[39m[32m Project ID                [39m[90m│[39m[32m Project Number [39m[90m│[39m[32m Resource Location ID [39m[90m│[39m
+[90m├──────────────────────[39m[90m┼───────────────────────────[39m[90m┼────────────────[39m[90m┼──────────────────────┤[39m
+[90m│[39m cacao                [90m│[39m cacao-28037               [90m│[39m 597216845163   [90m│[39m [Not specified]      [90m│[39m
+[90m├──────────────────────[39m[90m┼───────────────────────────[39m[90m┼────────────────[39m[90m┼──────────────────────┤[39m
+[90m│[39m chatApp              [90m│[39m chatapp-7f123             [90m│[39m 698450269514   [90m│[39m [Not specified]      [90m│[39m
+[90m├──────────────────────[39m[90m┼───────────────────────────[39m[90m┼────────────────[39m[90m┼──────────────────────┤[39m
+[90m│[39m currentgestion       [90m│[39m currentgestion            [90m│[39m 373703874171   [90m│[39m [Not specified]      [90m│[39m
+[90m├──────────────────────[39m[90m┼───────────────────────────[39m[90m┼────────────────[39m[90m┼──────────────────────┤[39m
+[90m│[39m currentgestionf      [90m│[39m currentgestionf (current) [90m│[39m 517427198467   [90m│[39m [Not specified]      [90m│[39m
+[90m├──────────────────────[39m[90m┼───────────────────────────[39m[90m┼────────────────[39m[90m┼──────────────────────┤[39m
+[90m│[39m DavidLusengePortf    [90m│[39m davidlusengeportf         [90m│[39m 284077992726   [90m│[39m [Not specified]      [90m│[39m
+[90m├──────────────────────[39m[90m┼───────────────────────────[39m[90m┼────────────────[39m[90m┼──────────────────────┤[39m
+[90m│[39m resto                [90m│[39m resto-a5f4c               [90m│[39m 531584673500   [90m│[39m [Not specified]      [90m│[39m
+[90m└──────────────────────[39m[90m┴───────────────────────────[39m[90m┴────────────────[39m[90m┴──────────────────────┘[39m
+
+6 project(s) total.
