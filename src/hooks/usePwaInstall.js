@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 export function usePwaInstall() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isInstalled, setIsInstalled] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
 
   useEffect(() => {
     const onBeforeInstall = (event) => {
@@ -24,6 +25,10 @@ export function usePwaInstall() {
     if (window.matchMedia('(display-mode: standalone)').matches) {
       setIsInstalled(true);
     }
+    setIsIOS(
+      /iPad|iPhone|iPod/.test(window.navigator.userAgent)
+      || (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1),
+    );
 
     return () => {
       window.removeEventListener('beforeinstallprompt', onBeforeInstall);
@@ -39,5 +44,5 @@ export function usePwaInstall() {
     return outcome === 'accepted';
   };
 
-  return { canInstall: !!deferredPrompt, isInstalled, promptInstall };
+  return { canInstall: !!deferredPrompt, isInstalled, isIOS, promptInstall };
 }

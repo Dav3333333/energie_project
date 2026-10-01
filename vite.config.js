@@ -13,13 +13,13 @@ export default defineConfig({
       srcDir: 'src',
       filename: 'sw.js',
       devOptions: {
-        enabled: false, // activer ponctuellement pour tester le SW en dev
+        enabled: true,
         type: 'module',
         navigateFallback: 'index.html',
       },
       includeAssets: [
         'favicon.svg',
-        'icons/apple-touch-icon.png',
+        'splash/apple-icon-180.png',
         'robots.txt',
       ],
       manifest: {
@@ -37,16 +37,16 @@ export default defineConfig({
         background_color: '#ffffff',
         categories: ['business', 'productivity', 'utilities'],
         icons: [
-          { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
-          { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+          { src: '/splash/manifest-icon-192.maskable.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/splash/manifest-icon-512.maskable.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
           {
-            src: '/icons/icon-maskable-192.png',
+            src: '/splash/manifest-icon-192.maskable.png',
             sizes: '192x192',
             type: 'image/png',
             purpose: 'maskable',
           },
           {
-            src: '/icons/icon-maskable-512.png',
+            src: '/splash/manifest-icon-512.maskable.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',
@@ -57,13 +57,13 @@ export default defineConfig({
             name: 'Nouveau relevé',
             short_name: 'Relevé',
             url: '/readings/new',
-            icons: [{ src: '/icons/icon-192.png', sizes: '192x192' }],
+            icons: [{ src: '/splash/manifest-icon-192.maskable.png', sizes: '192x192' }],
           },
           {
             name: 'Nouvel achat kWh',
             short_name: 'Achat',
             url: '/energy-purchases/new',
-            icons: [{ src: '/icons/icon-192.png', sizes: '192x192' }],
+            icons: [{ src: '/splash/manifest-icon-192.maskable.png', sizes: '192x192' }],
           },
         ],
       },
