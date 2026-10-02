@@ -49,3 +49,33 @@ export function usePurchasesByGallery(galleryId, opts = {}) {
     staleTime: Infinity,
   });
 }
+
+export function usePurchasesAcrossScope(galleryIds, opts = {}) {
+  const qc = useQueryClient();
+  const key = ['purchases', 'scope', galleryIds, opts];
+  const scopeKey = galleryIds === null ? 'all' : [...(galleryIds ?? [])].sort().join(',');
+
+  useEffect(() => {
+    if (galleryIds !== null && !galleryIds?.length) return undefined;
+    if (galleryIds === null) {
+      return subscribePurchasesByGallery(null, opts, (items) => qc.setQueryData(key, items), (error) => {
+        console.error('[purchases] Impossible de charger les achats:', error);
+      });
+    }
+
+    const byGallery = new Map();
+    const unsubscribe = galleryIds.map((galleryId) => subscribePurchasesByGallery(galleryId, opts, (items) => {
+      byGallery.set(galleryId, items);
+      qc.setQueryData(key, [...byGallery.values()].flat()
+        .sort((a, b) => (b.purchaseDate?.toMillis?.() ?? 0) - (a.purchaseDate?.toMillis?.() ?? 0)));
+    }, (error) => console.error(`[purchases] Galerie ${galleryId}:`, error)));
+    return () => unsubscribe.forEach((stop) => stop());
+  }, [qc, scopeKey, JSON.stringify(opts)]);
+
+  return useQuery({
+    queryKey: key,
+    queryFn: () => Promise.resolve([]),
+    enabled: galleryIds === null || !!galleryIds?.length,
+    staleTime: Infinity,
+  });
+}

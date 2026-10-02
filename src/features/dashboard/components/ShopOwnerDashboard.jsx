@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { Plus, Receipt } from 'lucide-react';
+import { Receipt } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import CreditBalanceCard from '@/components/common/CreditBalanceCard';
 import PowerStatusBadge from '@/components/common/PowerStatusBadge';
@@ -9,7 +9,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '@/features/auth/hooks/useAuth';
 import { useShopsByIds } from '@/features/shops/hooks/useShops';
 import { useAlertsByShop } from '@/features/alerts/hooks/useAlerts';
-import { formatDateTime, formatCurrency } from '@/lib/formatters';
+import { formatDateTime } from '@/lib/formatters';
 
 export default function ShopOwnerDashboard() {
   const { shopIds } = useAuth();
@@ -35,10 +35,7 @@ export default function ShopOwnerDashboard() {
 
           <CreditBalanceCard shop={primaryShop} />
 
-          <div className="grid grid-cols-2 gap-2">
-            <Button variant="outline" size="md" onClick={() => navigate(`/energy-purchases/new?shopId=${primaryShop.id}`)}>
-              <Plus size={16} /> Achat kWh
-            </Button>
+          <div className="grid grid-cols-1 gap-2">
             <Button variant="outline" size="md" onClick={() => navigate('/invoices')}>
               <Receipt size={16} /> Factures
             </Button>

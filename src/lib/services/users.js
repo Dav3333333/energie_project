@@ -3,7 +3,7 @@ import {
   getAuth, createUserWithEmailAndPassword, updateProfile,
   signOut as fbSignOut,
 } from 'firebase/auth';
-import { fb, AppError, ERR, toError } from './base';
+import { fb, AppError, ERR } from './base';
 import { writeAuditLog, AUDIT_ACTIONS } from './audit';
 
 const USERNAME_REGEX = /^[a-z0-9._]{3,30}$/;
@@ -43,6 +43,15 @@ export async function createManagedUser({
   role, galleryIds = [], shopIds = [],
   createdByUserId, actorRole,
 }) {
+  const superAdminRoles = ['SUPER_ADMIN', 'GALLERY_ADMIN', 'TECHNICIAN', 'SHOP_OWNER', 'SHOP_WORKER'];
+  const galleryAdminRoles = ['TECHNICIAN', 'SHOP_OWNER', 'SHOP_WORKER'];
+  if (!(actorRole === 'SUPER_ADMIN' ? superAdminRoles : galleryAdminRoles).includes(role)) {
+    throw new AppError(ERR.PERMISSION_DENIED, 'Vous ne pouvez pas créer un utilisateur avec ce rôle.');
+  }
+  if (!['SUPER_ADMIN', 'GALLERY_ADMIN'].includes(actorRole)) {
+    throw new AppError(ERR.PERMISSION_DENIED, 'Seuls les administrateurs peuvent créer des utilisateurs.');
+  }
+
   const usernameNormalized = normalizeUsername(username);
   if (!USERNAME_REGEX.test(usernameNormalized)) {
     throw new AppError(ERR.INVALID_ARGUMENT, "Nom d'utilisateur invalide (3-30 caractères).");
@@ -182,12 +191,11 @@ export async function archiveManagedUser({ targetUid, reason, actorUserId, actor
   return { uid: targetUid, previous };
 }
 
-export async function listUsersByGallery(galleryId) {
-  const usersQ = fb.query(
-    fb.collection(fb.db, 'users'),
-    fb.where('galleryIds', 'array-contains', galleryId),
-    fb.limit(500),
-  );
+export async function listUsersByGallery(galleryId = null) {
+  const constraints = [fb.collection(fb.db, 'users')];
+  if (galleryId) constraints.push(fb.where('galleryIds', 'array-contains', galleryId));
+  constraints.push(fb.limit(500));
+  const usersQ = fb.query(...constraints);
   const snap = await fb.getDocs(usersQ);
   return snap.docs.map((d) => {
     const data = d.data();

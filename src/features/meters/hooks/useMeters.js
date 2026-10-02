@@ -49,3 +49,24 @@ export function useMetersByGallery(galleryId, filters = {}) {
     staleTime: Infinity,
   });
 }
+
+export function useMetersAcrossScope(galleryIds, filters = {}) {
+  const qc = useQueryClient();
+  const key = ['meters', 'scope', galleryIds, filters];
+  const scopeKey = galleryIds === null ? 'all' : [...(galleryIds ?? [])].sort().join(',');
+  useEffect(() => {
+    if (galleryIds !== null && !galleryIds?.length) return undefined;
+    if (galleryIds === null) {
+      return subscribeMetersByGallery(null, filters, (items) => qc.setQueryData(key, items), (error) => {
+        console.error('[meters] Impossible de charger les compteurs:', error);
+      });
+    }
+    const byGallery = new Map();
+    const unsubscribes = galleryIds.map((galleryId) => subscribeMetersByGallery(galleryId, filters, (items) => {
+      byGallery.set(galleryId, items);
+      qc.setQueryData(key, [...byGallery.values()].flat());
+    }, (error) => console.error(`[meters] Galerie ${galleryId}:`, error)));
+    return () => unsubscribes.forEach((unsubscribe) => unsubscribe());
+  }, [qc, scopeKey, JSON.stringify(filters)]);
+  return useQuery({ queryKey: key, queryFn: () => Promise.resolve([]), enabled: galleryIds === null || !!galleryIds?.length, staleTime: Infinity });
+}

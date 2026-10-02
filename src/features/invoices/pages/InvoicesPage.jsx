@@ -8,7 +8,7 @@ import Button from '@/components/ui/Button';
 import TouchCard from '@/components/mobile/TouchCard';
 import StatusBadge from '@/components/common/StatusBadge';
 import { useAuth } from '@/features/auth/hooks/useAuth';
-import { useInvoicesByGallery } from '../hooks/useInvoices';
+import { useInvoicesAcrossScope } from '../hooks/useInvoices';
 import { formatCurrency, formatDate } from '@/lib/formatters';
 import { ROLES } from '@/constants/roles';
 import { Link } from 'react-router-dom';
@@ -16,8 +16,8 @@ import { Link } from 'react-router-dom';
 export default function InvoicesPage() {
   const { profile, galleryIds } = useAuth();
   const navigate = useNavigate();
-  const galleryId = galleryIds?.[0];
-  const { data: invoices, isLoading } = useInvoicesByGallery(galleryId);
+  const scope = profile?.role === ROLES.SUPER_ADMIN ? null : (galleryIds ?? []);
+  const { data: invoices, isLoading } = useInvoicesAcrossScope(scope);
 
   const canGenerate = [ROLES.SUPER_ADMIN, ROLES.GALLERY_ADMIN].includes(profile?.role);
 

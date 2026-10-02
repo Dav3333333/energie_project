@@ -28,8 +28,12 @@ service cloud.firestore {
     function isShopOwner()    { return role() == 'SHOP_OWNER'; }
     function isShopWorker()   { return role() == 'SHOP_WORKER'; }
 
-    function myGalleryIds() { return isActive() ? me().galleryIds : []; }
-    function myShopIds()    { return isActive() ? me().shopIds    : []; }
+    function myGalleryIds() {
+      return isActive() && me().galleryIds is list ? me().galleryIds : [];
+    }
+    function myShopIds() {
+      return isActive() && me().shopIds is list ? me().shopIds : [];
+    }
 
     function inGallery(gid) {
       return isSuperAdmin() || (gid is string && gid in myGalleryIds());
@@ -56,14 +60,16 @@ service cloud.firestore {
       allow get: if isSignedIn() && (
         userId == uid()
         || isSuperAdmin()
-        || (isGalleryAdmin() && me().galleryIds.hasAny(
-             resource.data.galleryIds == null ? [] : resource.data.galleryIds))
+        || (isGalleryAdmin()
+          && resource.data.galleryIds is list
+          && resource.data.galleryIds.hasAny(myGalleryIds()))
       );
 
-      // Création : uniquement par un utilisateur authentifié et actif, pour son propre uid.
-      // Le profil doit référencer son propre uid et ne pas usurper un rôle supérieur.
-      allow create: if isSignedIn()
-        && request.resource.data.uid == uid()
+      // Création gérée : seul un administrateur autorisé peut créer le profil
+      // associé au compte Auth nouvellement créé.
+      allow create: if isActive()
+        && userId == request.resource.data.uid
+        && request.resource.data.createdByUserId == uid()
         && request.resource.data.status == 'ACTIVE'
         && request.resource.data.role in [
           'GALLERY_ADMIN', 'TECHNICIAN', 'SHOP_OWNER', 'SHOP_WORKER', 'SUPER_ADMIN'
@@ -72,7 +78,29 @@ service cloud.firestore {
           'uid', 'email', 'username', 'usernameNormalized',
           'firstName', 'lastName', 'fullName', 'role', 'status',
           'galleryIds', 'shopIds', 'createdAt', 'updatedAt'
-        ]);
+        ])
+        && request.resource.data.galleryIds is list
+        && request.resource.data.shopIds is list
+        && (
+          isSuperAdmin()
+          || (
+            isGalleryAdmin()
+            && request.resource.data.role in ['TECHNICIAN', 'SHOP_OWNER', 'SHOP_WORKER']
+            && request.resource.data.galleryIds.size() == 1
+            && request.resource.data.galleryIds.hasOnly(myGalleryIds())
+            && (
+              (request.resource.data.role == 'TECHNICIAN'
+                && request.resource.data.shopIds.size() == 0)
+              || (
+                request.resource.data.role in ['SHOP_OWNER', 'SHOP_WORKER']
+                && request.resource.data.shopIds.size() == 1
+                && exists(/databases/$(database)/documents/shops/$(request.resource.data.shopIds[0]))
+                && get(/databases/$(database)/documents/shops/$(request.resource.data.shopIds[0])).data.galleryId
+                   in myGalleryIds()
+              )
+            )
+          )
+        );
 
       // Modification : identité verrouillée côté client, sauf SUPER_ADMIN.
       allow update: if isSignedIn()
@@ -91,7 +119,11 @@ service cloud.firestore {
         );
 
       allow delete: if false;
-      allow list: if isSuperAdmin();
+      allow list: if isSuperAdmin() || (
+        isGalleryAdmin()
+        && resource.data.galleryIds is list
+        && resource.data.galleryIds.hasAny(myGalleryIds())
+      );
     }
 
     // ================================================================
@@ -100,13 +132,15 @@ service cloud.firestore {
     match /usernames/{normalized} {
       allow get: if true;
       allow list: if false;
-      // Création par le propriétaire (nouvel utilisateur qui vient d'être créé).
-      allow create: if isSignedIn()
-        && request.resource.data.uid == uid()
-        && normalized == request.resource.data.uid; // décommenter si on veut une clé = uid
-      // Ou création par l'utilisateur fraîchement authentifié.
-      allow update: if isSignedIn() && resource.data.uid == uid();
-      allow delete: if false;
+      // L'entrée username et le profil Auth sont créés dans la même transaction.
+      allow create: if isActive()
+        && request.resource.data.keys().hasOnly(['uid', 'email', 'createdAt'])
+        && request.resource.data.uid is string
+        && existsAfter(/databases/$(database)/documents/users/$(request.resource.data.uid))
+        && getAfter(/databases/$(database)/documents/users/$(request.resource.data.uid)).data.usernameNormalized == normalized
+        && getAfter(/databases/$(database)/documents/users/$(request.resource.data.uid)).data.email == request.resource.data.email
+        && getAfter(/databases/$(database)/documents/users/$(request.resource.data.uid)).data.createdByUserId == uid();
+      allow update, delete: if false;
     }
 
     // ================================================================
@@ -187,10 +221,28 @@ service cloud.firestore {
         || (isTechnician() && resource.data.galleryId in myGalleryIds())
         || (resource.data.shopId != null && resource.data.shopId in myShopIds())
       );
-      allow create: if isSignedIn()
-        && (isSuperAdmin() || isGalleryAdmin() || isTechnician())
+      allow create: if isActive()
+        && (isSuperAdmin() || isGalleryAdmin())
         && (request.resource.data.galleryId in myGalleryIds() || isSuperAdmin())
-        && request.resource.data.createdByUserId == uid();
+        && request.resource.data.createdByUserId == uid()
+        && request.resource.data.type in ['MAIN', 'SUB_METER']
+        && request.resource.data.code is string
+        && (
+          (request.resource.data.type == 'MAIN'
+            && request.resource.data.shopId == null
+            && request.resource.data.parentMeterId == null)
+          ||
+          (request.resource.data.type == 'SUB_METER'
+            && request.resource.data.shopId is string
+            && exists(/databases/$(database)/documents/shops/$(request.resource.data.shopId))
+            && get(/databases/$(database)/documents/shops/$(request.resource.data.shopId)).data.galleryId == request.resource.data.galleryId
+            && (request.resource.data.parentMeterId == null
+              || (request.resource.data.parentMeterId is string
+                && exists(/databases/$(database)/documents/meters/$(request.resource.data.parentMeterId))
+                && get(/databases/$(database)/documents/meters/$(request.resource.data.parentMeterId)).data.galleryId == request.resource.data.galleryId
+                && get(/databases/$(database)/documents/meters/$(request.resource.data.parentMeterId)).data.type == 'MAIN'
+                && get(/databases/$(database)/documents/meters/$(request.resource.data.parentMeterId)).data.status == 'ACTIVE')))
+        );
       allow update: if isSignedIn()
         && (isSuperAdmin()
           || ((isGalleryAdmin() || isTechnician()) && resource.data.galleryId in myGalleryIds()))
@@ -235,14 +287,22 @@ service cloud.firestore {
           || ((isGalleryAdmin() || isTechnician()) && resource.data.galleryId in myGalleryIds())
           || (resource.data.shopId != null && resource.data.shopId in myShopIds())
         );
-      allow create: if isSignedIn()
+      allow create: if isActive()
         && (isSuperAdmin() || isGalleryAdmin())
+        && (isSuperAdmin() || request.resource.data.galleryId in myGalleryIds())
         && request.resource.data.createdByUserId == uid()
+        && request.resource.data.meterId is string
+        && exists(/databases/$(database)/documents/meters/$(request.resource.data.meterId))
+        && get(/databases/$(database)/documents/meters/$(request.resource.data.meterId)).data.galleryId == request.resource.data.galleryId
+        && get(/databases/$(database)/documents/meters/$(request.resource.data.meterId)).data.shopId == request.resource.data.shopId
+        && get(/databases/$(database)/documents/meters/$(request.resource.data.meterId)).data.status == 'ACTIVE'
         && request.resource.data.status == 'VALID'
         && request.resource.data.purchasedKwh is number
         && request.resource.data.purchasedKwh > 0
-        && request.resource.data.totalAmount ==
-           request.resource.data.purchasedKwh * request.resource.data.pricePerKwh;
+        && request.resource.data.totalAmount >=
+           request.resource.data.purchasedKwh * request.resource.data.pricePerKwh - 0.01
+        && request.resource.data.totalAmount <=
+           request.resource.data.purchasedKwh * request.resource.data.pricePerKwh + 0.01;
       allow update: if isSignedIn()
         && (isSuperAdmin() || (isGalleryAdmin() && resource.data.galleryId in myGalleryIds()))
         // seule l'annulation (passage VALID → CANCELLED) est autorisée
@@ -303,7 +363,11 @@ service cloud.firestore {
         );
       allow create: if isSignedIn()
         && (isSuperAdmin() || isGalleryAdmin())
-        && request.resource.data.generatedByUserId == uid();
+        && request.resource.data.generatedByUserId == uid()
+        && request.resource.data.meterId is string
+        && exists(/databases/$(database)/documents/meters/$(request.resource.data.meterId))
+        && get(/databases/$(database)/documents/meters/$(request.resource.data.meterId)).data.galleryId == request.resource.data.galleryId
+        && (isSuperAdmin() || request.resource.data.galleryId in myGalleryIds());
       allow update, delete: if false;
     }
 

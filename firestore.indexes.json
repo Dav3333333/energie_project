@@ -1,6 +1,31 @@
 {
   "indexes": [
     {
+      "collectionGroup": "galleries",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "name", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "meters",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "galleryId", "order": "ASCENDING" },
+        { "fieldPath": "code", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "meters",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "galleryId", "order": "ASCENDING" },
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "shops",
       "queryScope": "COLLECTION",
       "fields": [
@@ -42,7 +67,43 @@
         { "fieldPath": "status", "order": "ASCENDING" }
       ]
     },
+    {
+      "collectionGroup": "meters",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "shopId", "order": "ASCENDING" },
+        { "fieldPath": "code", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "meters",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "galleryId", "order": "ASCENDING" },
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "code", "order": "ASCENDING" }
+      ]
+    },
 
+    {
+      "collectionGroup": "readings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "meterId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "readingDate", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "readings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "shopId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "readingDate", "order": "ASCENDING" }
+      ]
+    },
     {
       "collectionGroup": "readings",
       "queryScope": "COLLECTION",
@@ -150,14 +211,6 @@
     },
 
     {
-      "collectionGroup": "powerEvents",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "declaredAt", "order": "DESCENDING" }
-      ]
-    },
-
-    {
       "collectionGroup": "auditLogs",
       "queryScope": "COLLECTION",
       "fields": [
@@ -197,6 +250,15 @@
         { "fieldPath": "shopId", "order": "ASCENDING" },
         { "fieldPath": "type", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "alerts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "shopId", "order": "ASCENDING" },
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
       ]
     },
     {

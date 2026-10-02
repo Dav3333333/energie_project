@@ -37,8 +37,15 @@ export function subscribeShopsByIds(shopIds, cb, onError) {
     cb([]);
     return () => {};
   }
-  const constraints = [where('__name__', 'in', shopIds.slice(0, 10))];
-  return onSnapshot(query(collection(db, 'shops'), ...constraints), (snap) => {
-    cb(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-  }, onError);
+  const chunks = Array.from({ length: Math.ceil(shopIds.length / 10) }, (_, i) => shopIds.slice(i * 10, (i + 1) * 10));
+  const snapshots = new Map();
+  const unsubscribes = chunks.map((chunk, index) => onSnapshot(
+    query(collection(db, 'shops'), where('__name__', 'in', chunk)),
+    (snap) => {
+      snapshots.set(index, snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      cb([...snapshots.values()].flat());
+    },
+    onError,
+  ));
+  return () => unsubscribes.forEach((unsubscribe) => unsubscribe());
 }

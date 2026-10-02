@@ -1,6 +1,6 @@
 import {
-  collection, doc, getDoc, getDocs, onSnapshot, query,
-  where, orderBy, limit, startAfter,
+  collection, doc, getDoc, onSnapshot, query,
+  where, limit,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase/firebase';
 
@@ -19,10 +19,9 @@ export function subscribeGalleries({ status = null, pageSize = 30 } = {}, cb, on
   const parts = [collection(db, 'galleries')];
   const constraints = [];
   if (status) constraints.push(where('status', '==', status));
-  constraints.push(orderBy('name'));
   constraints.push(limit(pageSize));
   return onSnapshot(query(...parts, ...constraints), (snap) => {
-    cb(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    cb(snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => a.name.localeCompare(b.name)));
   }, onError);
 }
 

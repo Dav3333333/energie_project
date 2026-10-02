@@ -38,6 +38,7 @@ export default function InvoiceDetailPage() {
           tone="danger"
         />
         <StatCard label="Acheté (période)" value={formatKwh(invoice.purchasedKwh)} />
+        <StatCard label="Montant des achats" value={formatCurrency(invoice.purchasedAmount, invoice.currency)} />
         <StatCard
           label="Solde restant"
           value={formatCurrency(invoice.remainingAmount, invoice.currency)}

@@ -4,7 +4,7 @@ import { ref as sRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '@/lib/firebase/firebase';
 import { fb, toMillis, AppError, ERR } from './base';
 import { writeAuditLog, AUDIT_ACTIONS } from './audit';
-import { recalculateShopBalance } from './balances';
+import { recalculateMeterBalance } from './balances';
 import { generateInvoiceNumber } from './counters';
 
 function fmtMoney(v, currency = 'USD') {
@@ -49,7 +49,7 @@ function buildPdf({ gallery, shop, invoice, generatedBy }) {
   doc.text(invoice.type === 'INVOICE' ? 'FACTURE' : 'RELEVÉ DE COMPTE', 40, 165);
 
   doc.setTextColor('#64748b').setFontSize(9).setFont('helvetica', 'normal');
-  doc.text('Boutique', 40, 195);
+  doc.text('Compteur', 40, 195);
   doc.setTextColor('#1e293b').setFontSize(12).setFont('helvetica', 'bold');
   doc.text(`${shop.name} (${shop.code})`, 40, 208);
 
@@ -61,6 +61,7 @@ function buildPdf({ gallery, shop, invoice, generatedBy }) {
       ['Index fermeture', invoice.closingMeterKwh != null ? `${invoice.closingMeterKwh} kWh` : '—'],
       ['Consommation période', fmtKwh(invoice.consumedKwh)],
       ['Total acheté', fmtKwh(invoice.purchasedKwh)],
+      ['Montant des achats', fmtMoney(invoice.purchasedAmount, invoice.currency)],
       ['Crédit restant', fmtKwh(invoice.remainingKwh)],
       ['Prix par kWh', fmtMoney(invoice.pricePerKwh, invoice.currency)],
       ['Montant consommé', fmtMoney(invoice.consumedAmount, invoice.currency)],
@@ -83,26 +84,32 @@ function buildPdf({ gallery, shop, invoice, generatedBy }) {
 }
 
 export async function generateInvoice({ input, actorUserId, actorRole, actorFullName, actorEmail }) {
-  const shopSnap = await fb.getDoc(fb.doc(fb.db, 'shops', input.shopId));
-  if (!shopSnap.exists()) throw new AppError(ERR.NOT_FOUND, 'Boutique introuvable.');
-  const shop = shopSnap.data();
+  if (!['SUPER_ADMIN', 'GALLERY_ADMIN'].includes(actorRole)) {
+    throw new AppError(ERR.PERMISSION_DENIED, 'Seuls les administrateurs peuvent générer une facture.');
+  }
+  const meterSnap = await fb.getDoc(fb.doc(fb.db, 'meters', input.meterId));
+  if (!meterSnap.exists()) throw new AppError(ERR.NOT_FOUND, 'Compteur introuvable.');
+  const meter = meterSnap.data();
+  const shopId = meter.shopId ?? null;
+  const shop = { name: meter.name, code: meter.code };
 
-  const gallerySnap = await fb.getDoc(fb.doc(fb.db, 'galleries', shop.galleryId));
+  const gallerySnap = await fb.getDoc(fb.doc(fb.db, 'galleries', meter.galleryId));
   const gallery = gallerySnap.data() ?? {};
 
-  const ps = fb.Timestamp.fromDate(new Date(input.periodStart));
-  const pe = fb.Timestamp.fromDate(new Date(input.periodEnd));
+  const ps = fb.Timestamp.fromDate(new Date(`${input.periodStart}T00:00:00`));
+  const periodEndDate = new Date(`${input.periodEnd}T23:59:59.999`);
+  const pe = fb.Timestamp.fromDate(periodEndDate);
   if (ps.toMillis() >= pe.toMillis()) throw new AppError(ERR.INVALID_ARGUMENT, 'Période invalide.');
 
   // Relevés dans la période
   const readingsQ = fb.query(
     fb.collection(fb.db, 'readings'),
-    fb.where('shopId', '==', input.shopId),
-    fb.where('status', '==', 'VALID'),
-    fb.orderBy('readingDate', 'asc'),
+    fb.where('meterId', '==', input.meterId),
   );
   const readingsSnap = await fb.getDocs(readingsQ);
-  const allReadings = readingsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  const allReadings = readingsSnap.docs.map((d) => ({ id: d.id, ...d.data() }))
+    .filter((reading) => reading.status === 'VALID')
+    .sort((a, b) => toMillis(a.readingDate) - toMillis(b.readingDate));
   const inPeriod = allReadings.filter((r) => {
     const t = toMillis(r.readingDate);
     return t >= ps.toMillis() && t <= pe.toMillis();
@@ -120,24 +127,29 @@ export async function generateInvoice({ input, actorUserId, actorRole, actorFull
   // Achats dans la période
   const purchasesQ = fb.query(
     fb.collection(fb.db, 'energyPurchases'),
-    fb.where('shopId', '==', input.shopId),
-    fb.where('status', '==', 'VALID'),
+    fb.where('meterId', '==', input.meterId),
   );
   const purchasesSnap = await fb.getDocs(purchasesQ);
   const purchasesInPeriod = purchasesSnap.docs
     .map((d) => d.data())
     .filter((p) => {
       const t = toMillis(p.purchaseDate);
-      return t >= ps.toMillis() && t <= pe.toMillis();
+      return p.status === 'VALID' && t >= ps.toMillis() && t <= pe.toMillis();
     });
   const purchasedKwh = Number(purchasesInPeriod.reduce((s, p) => s + Number(p.purchasedKwh ?? 0), 0).toFixed(3));
 
-  const pricePerKwh = Number(shop.customPricePerKwh ?? gallery.defaultPricePerKwh ?? 0);
-  const balance = await recalculateShopBalance(input.shopId);
+  const balance = await recalculateMeterBalance(input.meterId);
+  const allValidPurchases = purchasesSnap.docs.map((d) => d.data()).filter((p) => p.status === 'VALID');
+  const totalPurchasedKwh = allValidPurchases.reduce((sum, purchase) => sum + Number(purchase.purchasedKwh ?? 0), 0);
+  const totalPurchasedAmount = allValidPurchases.reduce((sum, purchase) => sum + Number(purchase.totalAmount ?? 0), 0);
+  const pricePerKwh = totalPurchasedKwh > 0
+    ? totalPurchasedAmount / totalPurchasedKwh
+    : Number(shop.customPricePerKwh ?? gallery.defaultPricePerKwh ?? 0);
+  const purchasedAmount = Number(purchasesInPeriod.reduce((sum, purchase) => sum + Number(purchase.totalAmount ?? 0), 0).toFixed(2));
 
   const consumedAmount = Number((consumedKwh * pricePerKwh).toFixed(2));
-  const remainingAmount = Number((balance.remainingKwh * pricePerKwh).toFixed(2));
-  const currency = gallery.currency ?? 'USD';
+  const remainingAmount = Number(Number(balance.remainingAmount ?? (balance.remainingKwh * pricePerKwh)).toFixed(2));
+  const currency = balance.currency ?? gallery.currency ?? 'USD';
 
   const invoiceNumber = await generateInvoiceNumber({
     galleryCode: gallery.code,
@@ -153,25 +165,26 @@ export async function generateInvoice({ input, actorUserId, actorRole, actorFull
     invoice: {
       invoiceNumber, type: input.type ?? 'STATEMENT',
       periodStart: ps, periodEnd: pe, createdAt: new Date(),
-      openingMeterKwh, closingMeterKwh, consumedKwh, purchasedKwh,
+      openingMeterKwh, closingMeterKwh, consumedKwh, purchasedKwh, purchasedAmount,
       remainingKwh: balance.remainingKwh, pricePerKwh, consumedAmount, remainingAmount, currency,
     },
     generatedBy: { fullName: actorFullName, email: actorEmail },
   });
 
   // Upload Storage
-  const storagePath = `invoices/${shop.galleryId}/${invoiceRef.id}.pdf`;
+  const storagePath = `invoices/${meter.galleryId}/${invoiceRef.id}.pdf`;
   const storageRef = sRef(storage, storagePath);
   await uploadBytes(storageRef, pdfBlob, { contentType: 'application/pdf' });
   const pdfUrl = await getDownloadURL(storageRef);
 
   const data = {
-    galleryId: shop.galleryId,
-    shopId: input.shopId,
+    galleryId: meter.galleryId,
+    shopId,
+    meterId: input.meterId,
     invoiceNumber,
     type: input.type ?? 'STATEMENT',
     periodStart: ps, periodEnd: pe,
-    openingMeterKwh, closingMeterKwh, consumedKwh, purchasedKwh,
+    openingMeterKwh, closingMeterKwh, consumedKwh, purchasedKwh, purchasedAmount,
     remainingKwh: balance.remainingKwh, pricePerKwh,
     consumedAmount, remainingAmount, currency,
     status: 'ISSUED',
@@ -184,7 +197,7 @@ export async function generateInvoice({ input, actorUserId, actorRole, actorFull
   await writeAuditLog({
     action: AUDIT_ACTIONS.INVOICE_GENERATED,
     entityType: 'invoice', entityId: invoiceRef.id,
-    galleryId: shop.galleryId, shopId: input.shopId,
+    galleryId: meter.galleryId, shopId,
     actorUserId, actorRole,
     newData: { invoiceNumber, type: input.type, consumedKwh, consumedAmount },
   });

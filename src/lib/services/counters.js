@@ -25,3 +25,11 @@ export async function generateInvoiceNumber({ galleryCode, date = new Date() }) 
   const seq = await nextCounter(`invoice_${galleryCode}_${yyyymm}`);
   return `FAC-${galleryCode}-${yyyymm}-${String(seq).padStart(5, '0')}`;
 }
+
+export function generateMeterCode({ galleryCode, galleryId, uniqueId }) {
+  const prefix = String(galleryCode || galleryId)
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+  return `${prefix}-MTR-${uniqueId}`;
+}

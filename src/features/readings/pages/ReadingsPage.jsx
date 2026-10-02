@@ -7,15 +7,15 @@ import LoadingState from '@/components/common/LoadingState';
 import StatusBadge from '@/components/common/StatusBadge';
 import Button from '@/components/ui/Button';
 import { useAuth } from '@/features/auth/hooks/useAuth';
-import { useReadingsByGallery } from '../hooks/useReadings';
+import { useReadingsAcrossScope } from '../hooks/useReadings';
 import { formatDateTime } from '@/lib/formatters';
 import { ROLES } from '@/constants/roles';
 
 export default function ReadingsPage() {
   const { profile, galleryIds } = useAuth();
   const navigate = useNavigate();
-  const galleryId = galleryIds?.[0];
-  const { data: readings, isLoading } = useReadingsByGallery(galleryId, { pageSize: 50 });
+  const scope = profile?.role === ROLES.SUPER_ADMIN ? null : (galleryIds ?? []);
+  const { data: readings, isLoading } = useReadingsAcrossScope(scope, { pageSize: 50 });
 
   return (
     <AppShell title="Relevés">

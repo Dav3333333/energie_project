@@ -29,7 +29,7 @@ export function downloadReportPdf({ shops, readings, purchases, period, totals }
     body: [
       ['Consommé', formatKwh(totals.totalConsumed)],
       ['Acheté', formatKwh(totals.totalPurchased)],
-      ['Montant achats', formatCurrency(totals.totalSpent, 'USD')],
+      ['Montant achats', totals.totalSpentLabel ?? formatCurrency(totals.totalSpent, 'USD')],
       ['Boutiques', String(shops.length)],
     ],
     theme: 'grid',

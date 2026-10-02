@@ -39,7 +39,7 @@ async function getActorProfile() {
   const { getDoc, doc } = await import('firebase/firestore');
   const { db } = await import('./firebase');
   const snap = await getDoc(doc(db, 'users', uid));
-  _profileCache = snap.exists() ? { uid, ...snap.data() } : null;
+  _profileCache = snap.exists() ? { ...snap.data(), uid } : null;
   return _profileCache;
 }
 export function invalidateActorProfileCache() {
@@ -49,7 +49,14 @@ export function invalidateActorProfileCache() {
 // ---------------------------------------------------------------- Users
 async function _userCtx() {
   const actor = await getActorProfile();
-  return { actorUserId: actor.uid, actorRole: actor.role, actorFullName: actor.fullName, actorEmail: actor.email };
+  if (!actor || actor.status !== 'ACTIVE') throw new Error('permission-denied');
+  return {
+    actorUserId: actor.uid,
+    actorRole: actor.role,
+    actorGalleryIds: actor.galleryIds ?? [],
+    actorFullName: actor.fullName,
+    actorEmail: actor.email,
+  };
 }
 
 export const callables = {
@@ -57,7 +64,11 @@ export const callables = {
   createManagedUser: (payload) =>
     invoke(async () => {
       const ctx = await _userCtx();
-      return Users.createManagedUser({ ...payload, ...ctx });
+      return Users.createManagedUser({
+        ...payload,
+        createdByUserId: ctx.actorUserId,
+        actorRole: ctx.actorRole,
+      });
     }),
 
   updateManagedUser: (payload) =>
@@ -78,7 +89,23 @@ export const callables = {
 
   listUsersByGallery: (payload) =>
     invoke(async () => {
-      const users = await Users.listUsersByGallery(payload.galleryId);
+      const actor = await getActorProfile();
+      if (!actor || actor.status !== 'ACTIVE') throw new Error('permission-denied');
+      const galleryId = payload?.galleryId ?? null;
+      if (actor.role === 'SUPER_ADMIN') {
+        // Sans filtre, le SUPER_ADMIN consulte la liste complète.
+      } else if (
+        actor.role === 'GALLERY_ADMIN'
+        && galleryId
+        && (actor.galleryIds ?? []).includes(galleryId)
+      ) {
+        // Un admin de galerie ne voit que les utilisateurs de ses galeries.
+      } else {
+        const error = new Error('Vous ne pouvez consulter que les utilisateurs de vos galeries.');
+        error.code = 'permission-denied';
+        throw error;
+      }
+      const users = await Users.listUsersByGallery(galleryId);
       return { ok: true, users };
     }),
 

@@ -10,11 +10,11 @@ const DEFAULT_PERIOD_DAYS = 7;
  * Lecture seule des achats/relevés VALID + écriture du solde.
  * Déclenche les alertes LOW/CRITICAL/EXHAUSTED si nécessaire.
  */
-export async function recalculateShopBalance(shopId, { transaction = null } = {}) {
+export async function recalculateShopBalance(shopId) {
   const shopRef = fb.doc(fb.db, 'shops', shopId);
 
-  const compute = async (tx) => {
-    const shopSnap = tx ? await tx.get(shopRef) : await fb.getDoc(shopRef);
+  const compute = async () => {
+    const shopSnap = await fb.getDoc(shopRef);
     if (!shopSnap.exists()) throw new AppError(ERR.NOT_FOUND, 'Boutique introuvable.');
     const shop = shopSnap.data();
     const galleryId = shop.galleryId;
@@ -23,30 +23,29 @@ export async function recalculateShopBalance(shopId, { transaction = null } = {}
     const purchasesQ = fb.query(
       fb.collection(fb.db, 'energyPurchases'),
       fb.where('shopId', '==', shopId),
-      fb.where('status', '==', 'VALID'),
     );
-    const purchasesSnap = tx ? await tx.get(purchasesQ) : await fb.getDocs(purchasesQ);
-    const purchases = purchasesSnap.docs.map((d) => d.data());
+    const purchasesSnap = await fb.getDocs(purchasesQ);
+    const purchases = purchasesSnap.docs.map((d) => d.data()).filter((purchase) => purchase.status === 'VALID');
     const totalPurchasedKwh = purchases.reduce((s, p) => s + Number(p.purchasedKwh ?? 0), 0);
+    const totalPurchaseAmount = purchases.reduce((s, p) => s + Number(p.totalAmount ?? 0), 0);
 
     // Relevés VALID
     const readingsQ = fb.query(
       fb.collection(fb.db, 'readings'),
       fb.where('shopId', '==', shopId),
-      fb.where('status', '==', 'VALID'),
     );
-    const readingsSnap = tx ? await tx.get(readingsQ) : await fb.getDocs(readingsQ);
+    const readingsSnap = await fb.getDocs(readingsQ);
     const readings = readingsSnap.docs
       .map((d) => ({ id: d.id, ...d.data() }))
-      .filter((r) => typeof r.consumptionKwh === 'number');
+      .filter((r) => r.status === 'VALID' && typeof r.consumptionKwh === 'number');
     const totalConsumedKwh = readings.reduce((s, r) => s + Number(r.consumptionKwh), 0);
 
     // Tarif actif
-    let activePricePerKwh = shop.activePricePerKwh ?? null;
+    let activePricePerKwh = totalPurchasedKwh > 0
+      ? totalPurchaseAmount / totalPurchasedKwh
+      : (shop.customPricePerKwh ?? shop.activePricePerKwh ?? null);
     if (activePricePerKwh == null) {
-      const gallerySnap = tx
-        ? await tx.get(fb.doc(fb.db, 'galleries', galleryId))
-        : await fb.getDoc(fb.doc(fb.db, 'galleries', galleryId));
+      const gallerySnap = await fb.getDoc(fb.doc(fb.db, 'galleries', galleryId));
       const gallery = gallerySnap.data() ?? {};
       activePricePerKwh = shop.customPricePerKwh != null
         ? shop.customPricePerKwh
@@ -115,18 +114,12 @@ export async function recalculateShopBalance(shopId, { transaction = null } = {}
       updatedAt: fb.serverTimestamp(),
     };
 
-    if (tx) tx.update(shopRef, update);
-    else await fb.updateDoc(shopRef, update);
+    await fb.updateDoc(shopRef, update);
 
     return { shopId, galleryId, shopName: shop.name, shopCode: shop.code, ...update };
   };
 
-  let result;
-  if (transaction) {
-    result = await compute(transaction);
-  } else {
-    result = await fb.runTransaction(fb.db, compute);
-  }
+  const result = await compute();
 
   // Alertes (hors transaction pour ne pas bloquer).
   try {
@@ -135,6 +128,53 @@ export async function recalculateShopBalance(shopId, { transaction = null } = {}
     console.error('[recalculateShopBalance] alert creation failed', err);
   }
   return result;
+}
+
+/** Recalcule le crédit énergétique attribué directement à un compteur. */
+export async function recalculateMeterBalance(meterId) {
+  const meterRef = fb.doc(fb.db, 'meters', meterId);
+  const meterSnap = await fb.getDoc(meterRef);
+  if (!meterSnap.exists()) throw new AppError(ERR.NOT_FOUND, 'Compteur introuvable.');
+  const meter = meterSnap.data();
+
+  const purchasesQuery = fb.query(
+    fb.collection(fb.db, 'energyPurchases'),
+    fb.where('meterId', '==', meterId),
+  );
+  const readingsQuery = fb.query(
+    fb.collection(fb.db, 'readings'),
+    fb.where('meterId', '==', meterId),
+  );
+  const [purchaseSnapshot, readingSnapshot] = await Promise.all([
+    fb.getDocs(purchasesQuery),
+    fb.getDocs(readingsQuery),
+  ]);
+  const purchases = purchaseSnapshot.docs.map((doc) => doc.data()).filter((purchase) => purchase.status === 'VALID');
+  const readings = readingSnapshot.docs.map((doc) => doc.data()).filter((reading) => reading.status === 'VALID');
+  const totalPurchasedKwh = purchases.reduce((sum, purchase) => sum + Number(purchase.purchasedKwh ?? 0), 0);
+  const totalPurchaseAmount = purchases.reduce((sum, purchase) => sum + Number(purchase.totalAmount ?? 0), 0);
+  const currencies = [...new Set(purchases.map((purchase) => purchase.currency).filter(Boolean))];
+  const currency = currencies.length === 1 ? currencies[0] : null;
+  const totalConsumedKwh = readings.reduce((sum, reading) => sum + Number(reading.consumptionKwh ?? 0), 0);
+  const activePricePerKwh = totalPurchasedKwh > 0
+    ? totalPurchaseAmount / totalPurchasedKwh
+    : Number(meter.activePricePerKwh ?? 0);
+  const remainingKwh = Number((totalPurchasedKwh - totalConsumedKwh).toFixed(3));
+  const balanceStatus = remainingKwh <= 0 ? 'EXHAUSTED' : remainingKwh <= DEFAULT_CRITICAL ? 'CRITICAL' : remainingKwh <= DEFAULT_LOW ? 'LOW' : 'NORMAL';
+  const update = {
+    totalPurchasedKwh: Number(totalPurchasedKwh.toFixed(3)),
+    totalPurchaseAmount: Number(totalPurchaseAmount.toFixed(2)),
+    totalConsumedKwh: Number(totalConsumedKwh.toFixed(3)),
+    remainingKwh,
+    remainingAmount: currency ? Number((remainingKwh * activePricePerKwh).toFixed(2)) : null,
+    currency,
+    activePricePerKwh: Number(activePricePerKwh.toFixed(4)),
+    balanceStatus,
+    lastBalanceCalculatedAt: fb.serverTimestamp(),
+    updatedAt: fb.serverTimestamp(),
+  };
+  await fb.updateDoc(meterRef, update);
+  return { meterId, galleryId: meter.galleryId, shopId: meter.shopId ?? null, ...update };
 }
 
 async function createBalanceAlertIfNeeded(result) {

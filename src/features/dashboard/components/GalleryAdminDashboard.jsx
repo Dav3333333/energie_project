@@ -71,7 +71,7 @@ export default function GalleryAdminDashboard() {
           <Button variant="outline" size="md" onClick={() => navigate('/shops/new')}>
             <Plus size={16} /> Boutique
           </Button>
-          <Button variant="outline" size="md" onClick={() => navigate('/energy-purchases/new?shopId=')}>
+          <Button variant="outline" size="md" onClick={() => navigate('/energy-purchases/new')}>
             <Plus size={16} /> Achat kWh
           </Button>
         </div>

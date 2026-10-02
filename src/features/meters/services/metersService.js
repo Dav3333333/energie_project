@@ -20,13 +20,15 @@ export function subscribeMetersByShop(shopId, cb, onError) {
   );
 }
 
-export function subscribeMetersByGallery(galleryId, { type, status, pageSize = 50 } = {}, cb, onError) {
-  const constraints = [where('galleryId', '==', galleryId)];
-  if (type) constraints.push(where('type', '==', type));
+export function subscribeMetersByGallery(galleryId, { type, status, pageSize } = {}, cb, onError) {
+  const constraints = [];
+  if (galleryId) constraints.push(where('galleryId', '==', galleryId));
   if (status) constraints.push(where('status', '==', status));
-  constraints.push(orderBy('code'));
-  constraints.push(limit(pageSize));
+  if (pageSize) constraints.push(limit(pageSize));
   return onSnapshot(query(collection(db, 'meters'), ...constraints), (snap) => {
-    cb(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+    cb(snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .filter((meter) => !type || meter.type === type)
+      .sort((a, b) => a.code.localeCompare(b.code)));
   }, onError);
 }

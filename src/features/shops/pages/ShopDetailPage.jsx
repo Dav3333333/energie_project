@@ -13,6 +13,8 @@ import { useShop } from '../hooks/useShops';
 import { useMetersByShop } from '@/features/meters/hooks/useMeters';
 import { useReadingsByShop } from '@/features/readings/hooks/useReadings';
 import { formatDateTime, formatKwh, formatCurrency } from '@/lib/formatters';
+import { useAuth } from '@/features/auth/hooks/useAuth';
+import { ROLES } from '@/constants/roles';
 
 const TABS = ['Aperçu', 'Compteurs', 'Relevés'];
 
@@ -20,6 +22,8 @@ export default function ShopDetailPage() {
   const { shopId } = useParams();
   const navigate = useNavigate();
   const [tab, setTab] = useState('Aperçu');
+  const { profile } = useAuth();
+  const canCreateMeter = [ROLES.SUPER_ADMIN, ROLES.GALLERY_ADMIN].includes(profile?.role);
 
   const { data: shop, isLoading } = useShop(shopId);
   const { data: meters } = useMetersByShop(shopId);
@@ -83,11 +87,11 @@ export default function ShopDetailPage() {
 
         {tab === 'Compteurs' && (
           <>
-            <div className="flex justify-end">
+            {canCreateMeter && <div className="flex justify-end">
               <Button size="sm" onClick={() => navigate(`/meters/new?shopId=${shopId}`)}>
                 <Plus size={16} /> Nouveau compteur
               </Button>
-            </div>
+            </div>}
             {meters?.length ? (
               meters.map((m) => (
                 <Link key={m.id} to={`/meters/${m.id}`} className="block">

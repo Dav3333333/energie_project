@@ -10,18 +10,18 @@ import LoadingState from '@/components/common/LoadingState';
 import StatusBadge from '@/components/common/StatusBadge';
 import Button from '@/components/ui/Button';
 import { useAuth } from '@/features/auth/hooks/useAuth';
-import { usePurchasesByGallery } from '../hooks/usePurchases';
+import { usePurchasesAcrossScope } from '../hooks/usePurchases';
 import { formatCurrency, formatDateTime } from '@/lib/formatters';
 import { ROLES } from '@/constants/roles';
 
 export default function PurchasesPage() {
   const { profile, galleryIds } = useAuth();
   const navigate = useNavigate();
-  const galleryId = galleryIds?.[0];
+  const scopeGalleryIds = profile?.role === ROLES.SUPER_ADMIN ? null : (galleryIds ?? []);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
-  const { data: purchases, isLoading } = usePurchasesByGallery(galleryId, {
+  const { data: purchases, isLoading } = usePurchasesAcrossScope(scopeGalleryIds, {
     status: statusFilter || undefined,
   });
 
@@ -88,7 +88,7 @@ export default function PurchasesPage() {
               <TouchCard
                 interactive
                 title={`${p.purchasedKwh} kWh — ${formatCurrency(p.totalAmount, p.currency)}`}
-                subtitle={`${p.receiptNumber} · ${formatDateTime(p.purchaseDate)}`}
+                subtitle={`${p.meterName ? `${p.meterName} · ` : ''}${p.meterType === 'MAIN' ? 'Compteur général · ' : ''}${p.receiptNumber} · ${formatDateTime(p.purchaseDate)}`}
                 trailing={<StatusBadge status={p.status} />}
               />
             </Link>

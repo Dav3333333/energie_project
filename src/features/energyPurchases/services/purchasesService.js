@@ -26,14 +26,22 @@ export function subscribePurchasesByShop(shopId, { pageSize = 50, status } = {},
   );
 }
 
-export function subscribePurchasesByGallery(galleryId, { pageSize = 50, status } = {}, cb, onError) {
-  const constraints = [where('galleryId', '==', galleryId)];
-  if (status) constraints.push(where('status', '==', status));
-  constraints.push(orderBy('purchaseDate', 'desc'));
-  constraints.push(limit(pageSize));
+export function subscribePurchasesByGallery(galleryId, { status } = {}, cb, onError) {
+  const constraints = [];
+  if (galleryId) constraints.push(where('galleryId', '==', galleryId));
   return onSnapshot(
     query(collection(db, 'energyPurchases'), ...constraints),
-    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    (snap) => cb(snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .filter((purchase) => !status || purchase.status === status)
+      .sort((a, b) => purchaseTime(b.purchaseDate) - purchaseTime(a.purchaseDate))),
     onError,
   );
+}
+
+function purchaseTime(value) {
+  if (typeof value?.toMillis === 'function') return value.toMillis();
+  if (value instanceof Date) return value.getTime();
+  const parsed = Date.parse(value ?? '');
+  return Number.isNaN(parsed) ? 0 : parsed;
 }

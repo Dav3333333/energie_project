@@ -8,6 +8,7 @@ export function usePwaInstall() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [isInstalled, setIsInstalled] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
+  const [isSecureContext, setIsSecureContext] = useState(true);
 
   useEffect(() => {
     const onBeforeInstall = (event) => {
@@ -22,9 +23,13 @@ export function usePwaInstall() {
     window.addEventListener('beforeinstallprompt', onBeforeInstall);
     window.addEventListener('appinstalled', onInstalled);
 
-    if (window.matchMedia('(display-mode: standalone)').matches) {
+    if (
+      window.matchMedia('(display-mode: standalone)').matches
+      || window.navigator.standalone === true
+    ) {
       setIsInstalled(true);
     }
+    setIsSecureContext(window.isSecureContext);
     setIsIOS(
       /iPad|iPhone|iPod/.test(window.navigator.userAgent)
       || (window.navigator.platform === 'MacIntel' && window.navigator.maxTouchPoints > 1),
@@ -44,5 +49,5 @@ export function usePwaInstall() {
     return outcome === 'accepted';
   };
 
-  return { canInstall: !!deferredPrompt, isInstalled, isIOS, promptInstall };
+  return { canInstall: !!deferredPrompt, isInstalled, isIOS, isSecureContext, promptInstall };
 }

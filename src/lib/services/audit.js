@@ -35,7 +35,6 @@ export async function writeAuditLog({
   entityId,
   galleryId = null,
   shopId = null,
-  actorUserId,
   actorRole,
   previousData = null,
   newData = null,
@@ -43,7 +42,10 @@ export async function writeAuditLog({
 }) {
   try {
     const auth = getAuth();
-    const uid = actorUserId ?? auth.currentUser?.uid;
+    // Firestore rules validate actorUserId against request.auth.uid. Use the
+    // authenticated Firebase identity directly so a cached profile can never
+    // write a mismatched actor id.
+    const uid = auth.currentUser?.uid;
     if (!uid) return;
     await fb.addDoc(fb.collection(fb.db, 'auditLogs'), {
       action,

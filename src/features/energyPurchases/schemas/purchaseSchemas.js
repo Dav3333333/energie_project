@@ -1,12 +1,12 @@
 import { z } from 'zod';
 
 export const purchaseCreateSchema = z.object({
-  shopId: z.string().min(1),
+  meterId: z.string().min(1, 'Sélectionnez le compteur destinataire.'),
   purchasedKwh: z.coerce
     .number()
     .positive('La quantité doit être supérieure à 0.')
     .finite(),
-  pricePerKwh: z.coerce.number().nonnegative().optional(),
+  totalAmount: z.coerce.number().positive('Le montant total doit être supérieur à 0.').finite(),
   currency: z.enum(['USD', 'CDF']).optional(),
   paymentMethod: z.enum(['CASH', 'MOBILE_MONEY', 'BANK', 'OTHER']).default('CASH'),
   paymentReference: z.string().max(120).optional().or(z.literal('')),

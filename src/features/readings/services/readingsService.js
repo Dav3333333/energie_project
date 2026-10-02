@@ -28,14 +28,17 @@ export function subscribeReadingsByShop(shopId, { pageSize = 50 } = {}, cb, onEr
 }
 
 export function subscribeReadingsByGallery(galleryId, { pageSize = 50 } = {}, cb, onError) {
+  const constraints = [];
+  if (galleryId) constraints.push(where('galleryId', '==', galleryId));
+  if (galleryId) constraints.push(orderBy('readingDate', 'desc'), limit(pageSize));
   return onSnapshot(
-    query(
-      collection(db, 'readings'),
-      where('galleryId', '==', galleryId),
-      orderBy('readingDate', 'desc'),
-      limit(pageSize),
-    ),
-    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    query(collection(db, 'readings'), ...constraints),
+    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => readingTime(b.readingDate) - readingTime(a.readingDate))),
     onError,
   );
+}
+
+function readingTime(value) {
+  if (typeof value?.toMillis === 'function') return value.toMillis();
+  return value instanceof Date ? value.getTime() : (Date.parse(value ?? '') || 0);
 }

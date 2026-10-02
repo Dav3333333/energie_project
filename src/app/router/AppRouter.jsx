@@ -56,6 +56,7 @@ export default function AppRouter() {
         <Route path="/alerts" element={<AlertsPage />} />
         <Route path="/power-status" element={<PowerStatusPage />} />
         <Route path="/reports" element={<ReportsPage />} />
+        <Route path="/reports/:galleryId" element={<ReportsPage />} />
         <Route path="/invoices" element={<InvoicesPage />} />
         <Route path="/invoices/:invoiceId" element={<InvoiceDetailPage />} />
         <Route path="/incidents" element={<IncidentsPage />} />
@@ -82,9 +83,12 @@ export default function AppRouter() {
           <ProtectedRoute roles={[ROLES.SUPER_ADMIN, ROLES.GALLERY_ADMIN, ROLES.TECHNICIAN]} />
         }
       >
-        <Route path="/meters/new" element={<NewMeterPage />} />
         <Route path="/readings/new" element={<NewReadingPage />} />
         <Route path="/incidents/new" element={<NewIncidentPage />} />
+      </Route>
+
+      <Route element={<ProtectedRoute roles={[ROLES.SUPER_ADMIN, ROLES.GALLERY_ADMIN]} />}>
+        <Route path="/meters/new" element={<NewMeterPage />} />
       </Route>
 
       <Route path="/" element={<Navigate to="/dashboard" replace />} />

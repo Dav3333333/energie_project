@@ -45,3 +45,25 @@ export function useInvoicesByGallery(galleryId, opts = {}) {
     staleTime: Infinity,
   });
 }
+
+export function useInvoicesAcrossScope(galleryIds, opts = {}) {
+  const qc = useQueryClient();
+  const key = ['invoices', 'scope', galleryIds, opts];
+  const scopeKey = galleryIds === null ? 'all' : [...(galleryIds ?? [])].sort().join(',');
+  useEffect(() => {
+    if (galleryIds !== null && !galleryIds?.length) return undefined;
+    if (galleryIds === null) return subscribeInvoicesByGallery(null, opts, (items) => qc.setQueryData(key, items), (error) => console.error('[invoices] Load failed:', error));
+    const byGallery = new Map();
+    const stops = galleryIds.map((id) => subscribeInvoicesByGallery(id, opts, (items) => {
+      byGallery.set(id, items);
+      qc.setQueryData(key, [...byGallery.values()].flat().sort((a, b) => invoiceTime(b.periodEnd) - invoiceTime(a.periodEnd)));
+    }, (error) => console.error(`[invoices] Gallery ${id}:`, error)));
+    return () => stops.forEach((stop) => stop());
+  }, [qc, scopeKey, JSON.stringify(opts)]);
+  return useQuery({ queryKey: key, queryFn: () => Promise.resolve([]), enabled: galleryIds === null || !!galleryIds?.length, staleTime: Infinity });
+}
+
+function invoiceTime(value) {
+  if (typeof value?.toMillis === 'function') return value.toMillis();
+  return value instanceof Date ? value.getTime() : (Date.parse(value ?? '') || 0);
+}

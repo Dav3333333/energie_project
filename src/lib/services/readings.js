@@ -1,6 +1,6 @@
 import { fb, AppError, ERR } from './base';
 import { writeAuditLog, AUDIT_ACTIONS } from './audit';
-import { recalculateShopBalance } from './balances';
+import { recalculateShopBalance, recalculateMeterBalance } from './balances';
 
 export async function createManualReading({ input, actorUserId, actorRole }) {
   const meterRef = fb.doc(fb.db, 'meters', input.meterId);
@@ -20,18 +20,10 @@ export async function createManualReading({ input, actorUserId, actorRole }) {
   let createdReading;
 
   await fb.runTransaction(fb.db, async (tx) => {
-    const meterTx = (await tx.get(meterRef)).data();
-
-    const q = fb.query(
-      fb.collection(fb.db, 'readings'),
-      fb.where('meterId', '==', input.meterId),
-      fb.where('status', '==', 'VALID'),
-      fb.orderBy('readingDate', 'desc'),
-      fb.limit(1),
-    );
-    const lastSnap = await tx.get(q);
-    const last = lastSnap.empty ? null : lastSnap.docs[0].data();
-    const previousTotalKwh = last?.totalKwh ?? Number(meterTx.initialKwh ?? 0);
+    const meterTxSnap = await tx.get(meterRef);
+    if (!meterTxSnap.exists()) throw new AppError(ERR.NOT_FOUND, 'Compteur introuvable.');
+    const meterTx = meterTxSnap.data();
+    const previousTotalKwh = Number(meterTx.lastTotalKwh ?? meterTx.initialKwh ?? 0);
 
     if (input.totalKwh < previousTotalKwh) {
       throw new AppError(ERR.FAILED_PRECONDITION,
@@ -76,12 +68,11 @@ export async function createManualReading({ input, actorUserId, actorRole }) {
   });
 
   let newBalance = null;
-  if (meter.shopId) {
-    try {
-      newBalance = await recalculateShopBalance(meter.shopId);
-    } catch (err) {
-      console.error('[createManualReading] recalc failed', err);
-    }
+  try {
+    newBalance = await recalculateMeterBalance(input.meterId);
+    if (meter.shopId) newBalance = await recalculateShopBalance(meter.shopId);
+  } catch (err) {
+    console.error('[createManualReading] recalc failed', err);
   }
 
   await writeAuditLog({

@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const invoiceGenerateSchema = z
   .object({
-    shopId: z.string().min(1),
+    meterId: z.string().min(1, 'Sélectionnez un compteur.'),
     type: z.enum(['INVOICE', 'STATEMENT']).default('STATEMENT'),
     periodStart: z.string().min(1, 'Date de début requise.'),
     periodEnd: z.string().min(1, 'Date de fin requise.'),

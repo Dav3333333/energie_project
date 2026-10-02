@@ -5,7 +5,6 @@ import TopBar from './TopBar';
 import BottomNavigation from './BottomNavigation';
 import MobileDrawer from './MobileDrawer';
 import OfflineBanner from '@/components/pwa/OfflineBanner';
-import InstallPrompt from '@/components/pwa/InstallPrompt';
 
 /**
  * Coquille applicative mobile-first.
@@ -37,7 +36,6 @@ export default function AppShell({
       />
 
       <OfflineBanner />
-      <InstallPrompt />
 
       <main
         className={[

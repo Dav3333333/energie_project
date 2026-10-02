@@ -1,6 +1,6 @@
 import { useParams } from 'react-router-dom';
 import { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Gauge, Plus } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
 import PageHeader from '@/components/common/PageHeader';
 import StatCard from '@/components/common/StatCard';
@@ -11,18 +11,24 @@ import StatusBadge from '@/components/common/StatusBadge';
 import Button from '@/components/ui/Button';
 import { useGallery } from '../hooks/useGalleries';
 import { useShopsByGallery } from '@/features/shops/hooks/useShops';
+import { useMetersByGallery } from '@/features/meters/hooks/useMeters';
+import { ROLES } from '@/constants/roles';
+import { useAuth } from '@/features/auth/hooks/useAuth';
 import { formatCurrency } from '@/lib/formatters';
 import { Link, useNavigate } from 'react-router-dom';
 
-const TABS = ['Boutiques', 'Infos', 'Tarifs'];
+const TABS = ['Boutiques', 'Compteurs', 'Infos', 'Tarifs'];
 
 export default function GalleryDetailPage() {
   const { galleryId } = useParams();
   const navigate = useNavigate();
   const [tab, setTab] = useState('Boutiques');
+  const { profile } = useAuth();
+  const canManageMeters = [ROLES.SUPER_ADMIN, ROLES.GALLERY_ADMIN].includes(profile?.role);
 
   const { data: gallery, isLoading } = useGallery(galleryId);
   const { data: shops } = useShopsByGallery(galleryId, { status: 'ACTIVE' });
+  const { data: mainMeters } = useMetersByGallery(galleryId, { type: 'MAIN', status: 'ACTIVE' });
 
   if (isLoading) return <AppShell title="Galerie"><LoadingState /></AppShell>;
   if (!gallery) return <AppShell title="Galerie"><EmptyState title="Galerie introuvable" /></AppShell>;
@@ -105,6 +111,28 @@ export default function GalleryDetailPage() {
             <Row label="Seuil crédit faible" value={`${gallery.lowCreditThresholdKwh} kWh`} />
             <Row label="Seuil critique" value={`${gallery.criticalCreditThresholdKwh} kWh`} />
           </dl>
+        )}
+
+        {tab === 'Compteurs' && (
+          <div className="space-y-3">
+            {canManageMeters && (
+              <div className="flex justify-end">
+                <Button size="sm" onClick={() => navigate(`/meters/new?galleryId=${galleryId}&type=MAIN`)}>
+                  <Plus size={16} /> Nouveau compteur général
+                </Button>
+              </div>
+            )}
+            {mainMeters?.length ? mainMeters.map((meter) => (
+              <Link key={meter.id} to={`/meters/${meter.id}`} className="block">
+                <TouchCard
+                  interactive
+                  title={meter.name}
+                  subtitle={`${meter.code} · Index ${meter.lastTotalKwh ?? meter.initialKwh ?? 0} kWh`}
+                  trailing={<StatusBadge status={meter.status} />}
+                />
+              </Link>
+            )) : <EmptyState icon={<Gauge size={28} />} title="Aucun compteur général" description="Ajoutez le compteur principal qui dessert cette galerie." />}
+          </div>
         )}
 
         {tab === 'Tarifs' && (
