@@ -51,6 +51,7 @@ export function getAllowedNavigationForRole(role) {
       return [
         { to: '/dashboard', label: 'Accueil' },
         { to: '/shops', label: 'Boutiques' },
+        { to: '/users', label: 'Utilisateurs' },
         { to: '/readings', label: 'Relevés' },
         { to: '/alerts', label: 'Alertes' },
         { to: '/profile', label: 'Profil' },

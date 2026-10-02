@@ -41,7 +41,7 @@ async function createAuthUserSecondary(email, password, displayName) {
 export async function createManagedUser({
   email, password, username, firstName, lastName, phone = null,
   role, galleryIds = [], shopIds = [],
-  createdByUserId, actorRole,
+  createdByUserId, actorRole, actorGalleryIds = [],
 }) {
   const superAdminRoles = ['SUPER_ADMIN', 'GALLERY_ADMIN', 'TECHNICIAN', 'SHOP_OWNER', 'SHOP_WORKER'];
   const galleryAdminRoles = ['TECHNICIAN', 'SHOP_OWNER', 'SHOP_WORKER'];
@@ -50,6 +50,28 @@ export async function createManagedUser({
   }
   if (!['SUPER_ADMIN', 'GALLERY_ADMIN'].includes(actorRole)) {
     throw new AppError(ERR.PERMISSION_DENIED, 'Seuls les administrateurs peuvent créer des utilisateurs.');
+  }
+
+  if (role === 'SUPER_ADMIN') {
+    if (galleryIds.length || shopIds.length) throw new AppError(ERR.INVALID_ARGUMENT, 'Un super administrateur ne peut pas être rattaché à une galerie ou boutique.');
+  } else if (!Array.isArray(galleryIds) || galleryIds.length !== 1) {
+    throw new AppError(ERR.INVALID_ARGUMENT, 'Associez cet utilisateur à une galerie.');
+  }
+  if (actorRole === 'GALLERY_ADMIN') {
+    if (!['TECHNICIAN', 'SHOP_OWNER', 'SHOP_WORKER'].includes(role) || !actorGalleryIds.includes(galleryIds[0])) {
+      throw new AppError(ERR.PERMISSION_DENIED, 'Vous pouvez uniquement créer des utilisateurs de votre galerie.');
+    }
+  }
+  if (['SHOP_OWNER', 'SHOP_WORKER'].includes(role)) {
+    if (!Array.isArray(shopIds) || shopIds.length !== 1) {
+      throw new AppError(ERR.INVALID_ARGUMENT, 'Associez le propriétaire à une boutique.');
+    }
+    const shopSnap = await fb.getDoc(fb.doc(fb.db, 'shops', shopIds[0]));
+    if (!shopSnap.exists() || shopSnap.data().galleryId !== galleryIds[0]) {
+      throw new AppError(ERR.PERMISSION_DENIED, 'La boutique doit appartenir à la galerie sélectionnée.');
+    }
+  } else if (shopIds.length) {
+    throw new AppError(ERR.INVALID_ARGUMENT, 'Seuls les utilisateurs de boutique peuvent être associés à une boutique.');
   }
 
   const usernameNormalized = normalizeUsername(username);
@@ -133,22 +155,86 @@ export async function createManagedUser({
 }
 
 export async function updateManagedUser({
-  targetUid, patch, actorUserId, actorRole, allowPrivilegedChange,
+  targetUid, patch, actorUserId, actorRole, actorGalleryIds = [], allowPrivilegedChange,
 }) {
   const ref = fb.doc(fb.db, 'users', targetUid);
   const snap = await fb.getDoc(ref);
   if (!snap.exists()) throw new AppError(ERR.NOT_FOUND, 'Utilisateur introuvable.');
   const previous = snap.data();
 
-  const update = { ...patch, updatedAt: fb.serverTimestamp() };
-  if (!allowPrivilegedChange) {
-    delete update.role;
-    delete update.status;
-    delete update.galleryIds;
-    delete update.shopIds;
+  if (!['SUPER_ADMIN', 'GALLERY_ADMIN'].includes(actorRole)) {
+    throw new AppError(ERR.PERMISSION_DENIED, 'Action réservée aux administrateurs.');
+  }
+  if (actorRole === 'GALLERY_ADMIN' && (
+    targetUid === actorUserId
+    || !['TECHNICIAN', 'SHOP_OWNER', 'SHOP_WORKER'].includes(previous.role)
+    || !(previous.galleryIds ?? []).some((galleryId) => actorGalleryIds.includes(galleryId))
+  )) {
+    throw new AppError(ERR.PERMISSION_DENIED, 'Vous ne pouvez modifier que les utilisateurs de votre galerie.');
   }
 
-  await fb.updateDoc(ref, update);
+  const allowedProfileKeys = ['firstName', 'lastName', 'fullName', 'phone'];
+  const update = {};
+  for (const key of allowedProfileKeys) {
+    if (Object.hasOwn(patch, key)) update[key] = patch[key];
+  }
+  if (allowPrivilegedChange) {
+    for (const key of ['role', 'status', 'galleryIds', 'shopIds']) {
+      if (Object.hasOwn(patch, key)) update[key] = patch[key];
+    }
+    if (Object.hasOwn(update, 'role')) {
+      const role = update.role;
+      const galleryIds = update.galleryIds ?? previous.galleryIds ?? [];
+      const shopIds = update.shopIds ?? previous.shopIds ?? [];
+      if (!['SUPER_ADMIN', 'GALLERY_ADMIN', 'TECHNICIAN', 'SHOP_OWNER', 'SHOP_WORKER'].includes(role)) {
+        throw new AppError(ERR.INVALID_ARGUMENT, 'Rôle invalide.');
+      }
+      if (role === 'SUPER_ADMIN') {
+        update.galleryIds = [];
+        update.shopIds = [];
+      } else {
+        if (galleryIds.length !== 1) throw new AppError(ERR.INVALID_ARGUMENT, 'Associez cet utilisateur à une galerie.');
+        update.galleryIds = galleryIds;
+        if (['SHOP_OWNER', 'SHOP_WORKER'].includes(role)) {
+          if (shopIds.length !== 1) throw new AppError(ERR.INVALID_ARGUMENT, 'Associez cet utilisateur à une boutique.');
+          const shopSnap = await fb.getDoc(fb.doc(fb.db, 'shops', shopIds[0]));
+          if (!shopSnap.exists() || shopSnap.data().galleryId !== galleryIds[0]) {
+            throw new AppError(ERR.INVALID_ARGUMENT, 'La boutique doit appartenir à la galerie sélectionnée.');
+          }
+          update.shopIds = shopIds;
+        } else {
+          update.shopIds = [];
+        }
+      }
+    }
+    if (update.status && !['ACTIVE', 'ARCHIVED'].includes(update.status)) {
+      throw new AppError(ERR.INVALID_ARGUMENT, 'Statut utilisateur invalide.');
+    }
+  }
+  update.updatedAt = fb.serverTimestamp();
+
+  await fb.runTransaction(fb.db, async (tx) => {
+    tx.update(ref, update);
+    if (allowPrivilegedChange && update.role) {
+      const newGalleryIds = update.galleryIds ?? previous.galleryIds ?? [];
+      for (const galleryId of new Set([...(previous.galleryIds ?? []), ...newGalleryIds])) {
+        tx.delete(fb.doc(fb.db, `galleries/${galleryId}/admins/${targetUid}`));
+        tx.delete(fb.doc(fb.db, `galleries/${galleryId}/technicians/${targetUid}`));
+      }
+      for (const galleryId of newGalleryIds) {
+        if (update.role === 'GALLERY_ADMIN') {
+          tx.set(fb.doc(fb.db, `galleries/${galleryId}/admins/${targetUid}`), {
+            userId: targetUid, assignedAt: update.updatedAt, assignedByUserId: actorUserId,
+          });
+        }
+        if (update.role === 'TECHNICIAN') {
+          tx.set(fb.doc(fb.db, `galleries/${galleryId}/technicians/${targetUid}`), {
+            userId: targetUid, assignedAt: update.updatedAt, assignedByUserId: actorUserId,
+          });
+        }
+      }
+    }
+  });
 
   await writeAuditLog({
     action: AUDIT_ACTIONS.USER_UPDATED,
@@ -164,11 +250,21 @@ export async function updateManagedUser({
   return { uid: targetUid, previous };
 }
 
-export async function archiveManagedUser({ targetUid, reason, actorUserId, actorRole }) {
+export async function archiveManagedUser({ targetUid, reason, actorUserId, actorRole, actorGalleryIds = [] }) {
   const ref = fb.doc(fb.db, 'users', targetUid);
   const snap = await fb.getDoc(ref);
   if (!snap.exists()) throw new AppError(ERR.NOT_FOUND, 'Utilisateur introuvable.');
   const previous = snap.data();
+  if (targetUid === actorUserId) throw new AppError(ERR.PERMISSION_DENIED, 'Vous ne pouvez pas archiver votre propre compte.');
+  if (actorRole === 'GALLERY_ADMIN' && (
+    !['TECHNICIAN', 'SHOP_OWNER', 'SHOP_WORKER'].includes(previous.role)
+    || !(previous.galleryIds ?? []).some((galleryId) => actorGalleryIds.includes(galleryId))
+  )) {
+    throw new AppError(ERR.PERMISSION_DENIED, 'Vous ne pouvez archiver que les utilisateurs de votre galerie.');
+  }
+  if (!['SUPER_ADMIN', 'GALLERY_ADMIN'].includes(actorRole)) {
+    throw new AppError(ERR.PERMISSION_DENIED, 'Action réservée aux administrateurs.');
+  }
 
   await fb.updateDoc(ref, {
     status: 'ARCHIVED',

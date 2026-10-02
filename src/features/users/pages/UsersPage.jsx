@@ -16,7 +16,7 @@ import { toast } from 'sonner';
 export default function UsersPage() {
   const { profile, galleryIds } = useAuth();
   const navigate = useNavigate();
-  const galleryId = galleryIds?.[0];
+  const galleryId = profile?.role === ROLES.SUPER_ADMIN ? null : galleryIds?.[0];
   const [users, setUsers] = useState(null);
   const [loading, setLoading] = useState(true);
 

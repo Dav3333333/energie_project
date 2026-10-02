@@ -102,10 +102,39 @@ service cloud.firestore {
           )
         );
 
-      // Modification : identité verrouillée côté client, sauf SUPER_ADMIN.
+      // Le SUPER_ADMIN gère tout compte. Un admin de galerie peut archiver
+      // les techniciens et comptes boutique de ses galeries, sans changer leurs rôles.
       allow update: if isSignedIn()
         && (
           isSuperAdmin()
+          || (
+            isGalleryAdmin()
+            && userId != uid()
+            && resource.data.role in ['TECHNICIAN', 'SHOP_OWNER', 'SHOP_WORKER']
+            && resource.data.galleryIds is list
+            && resource.data.galleryIds.hasAny(myGalleryIds())
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'firstName', 'lastName', 'fullName', 'phone', 'updatedAt'
+            ])
+            && request.resource.data.uid == resource.data.uid
+            && request.resource.data.email == resource.data.email
+            && request.resource.data.role == resource.data.role
+            && request.resource.data.status == resource.data.status
+            && request.resource.data.galleryIds == resource.data.galleryIds
+            && request.resource.data.shopIds == resource.data.shopIds
+          )
+          || (
+            isGalleryAdmin()
+            && userId != uid()
+            && resource.data.role in ['TECHNICIAN', 'SHOP_OWNER', 'SHOP_WORKER']
+            && resource.data.galleryIds is list
+            && resource.data.galleryIds.hasAny(myGalleryIds())
+            && request.resource.data.status == 'ARCHIVED'
+            && request.resource.data.archivedByUserId == uid()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'status', 'updatedAt', 'archivedAt', 'archivedByUserId', 'archiveReason'
+            ])
+          )
           || (
             userId == uid()
             && request.resource.data.uid == resource.data.uid

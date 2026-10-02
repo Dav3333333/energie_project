@@ -66,6 +66,7 @@ export const callables = {
       const ctx = await _userCtx();
       return Users.createManagedUser({
         ...payload,
+        actorGalleryIds: ctx.actorGalleryIds,
         createdByUserId: ctx.actorUserId,
         actorRole: ctx.actorRole,
       });
