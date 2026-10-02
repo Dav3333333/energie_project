@@ -1,5 +1,5 @@
 import {
-  collection, doc, getDoc, onSnapshot, query, where, orderBy, limit,
+  collection, doc, getDoc, onSnapshot, query, where,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase/firebase';
 
@@ -15,13 +15,13 @@ export function subscribePurchase(id, cb, onError) {
 }
 
 export function subscribePurchasesByShop(shopId, { pageSize = 50, status } = {}, cb, onError) {
-  const constraints = [where('shopId', '==', shopId)];
-  if (status) constraints.push(where('status', '==', status));
-  constraints.push(orderBy('purchaseDate', 'desc'));
-  constraints.push(limit(pageSize));
   return onSnapshot(
-    query(collection(db, 'energyPurchases'), ...constraints),
-    (snap) => cb(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+    query(collection(db, 'energyPurchases'), where('shopId', '==', shopId)),
+    (snap) => cb(snap.docs
+      .map((d) => ({ id: d.id, ...d.data() }))
+      .filter((purchase) => !status || purchase.status === status)
+      .sort((a, b) => purchaseTime(b.purchaseDate) - purchaseTime(a.purchaseDate))
+      .slice(0, pageSize)),
     onError,
   );
 }

@@ -13,7 +13,7 @@ export function subscribeUser(uid, cb, onError) {
   }, onError);
 }
 
-export async function listUsersByGallery(galleryId) {
-  const { data } = await callables.listUsersByGallery(galleryId ? { galleryId } : {});
+export async function listUsersByGallery() {
+  const { data } = await callables.listUsersByGallery({});
   return data.users;
 }

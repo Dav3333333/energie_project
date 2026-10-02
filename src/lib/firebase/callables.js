@@ -92,21 +92,18 @@ export const callables = {
     invoke(async () => {
       const actor = await getActorProfile();
       if (!actor || actor.status !== 'ACTIVE') throw new Error('permission-denied');
-      const galleryId = payload?.galleryId ?? null;
+      let scopeGalleryIds = null;
       if (actor.role === 'SUPER_ADMIN') {
-        // Sans filtre, le SUPER_ADMIN consulte la liste complète.
-      } else if (
-        actor.role === 'GALLERY_ADMIN'
-        && galleryId
-        && (actor.galleryIds ?? []).includes(galleryId)
-      ) {
-        // Un admin de galerie ne voit que les utilisateurs de ses galeries.
+        // Le super administrateur consulte toute la liste.
+      } else if (actor.role === 'GALLERY_ADMIN' && (actor.galleryIds ?? []).length) {
+        // La requête reprend exactement le périmètre porté par le profil authentifié.
+        scopeGalleryIds = actor.galleryIds;
       } else {
         const error = new Error('Vous ne pouvez consulter que les utilisateurs de vos galeries.');
         error.code = 'permission-denied';
         throw error;
       }
-      const users = await Users.listUsersByGallery(galleryId);
+      const users = await Users.listUsersByGalleries(scopeGalleryIds);
       return { ok: true, users };
     }),
 

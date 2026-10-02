@@ -30,7 +30,7 @@ export default function UsersPage() {
     let cancelled = false;
     (async () => {
       try {
-        const list = await listUsersByGallery(galleryId);
+        const list = await listUsersByGallery();
         if (!cancelled) setUsers(list);
       } catch (err) {
         toast.error(err.message ?? 'Erreur de chargement.');

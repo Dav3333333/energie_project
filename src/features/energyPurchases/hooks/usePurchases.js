@@ -79,3 +79,28 @@ export function usePurchasesAcrossScope(galleryIds, opts = {}) {
     staleTime: Infinity,
   });
 }
+
+export function usePurchasesAcrossShops(shopIds, opts = {}) {
+  const qc = useQueryClient();
+  const normalizedIds = [...new Set(shopIds ?? [])].sort();
+  const scopeKey = normalizedIds.join(',');
+  const key = ['purchases', 'shops', scopeKey, opts];
+
+  useEffect(() => {
+    if (!normalizedIds.length) return undefined;
+    const byShop = new Map();
+    const stops = normalizedIds.map((shopId) => subscribePurchasesByShop(shopId, opts, (items) => {
+      byShop.set(shopId, items);
+      qc.setQueryData(key, [...byShop.values()].flat()
+        .sort((a, b) => (b.purchaseDate?.toMillis?.() ?? 0) - (a.purchaseDate?.toMillis?.() ?? 0)));
+    }, (error) => console.error(`[purchases] Boutique ${shopId}:`, error)));
+    return () => stops.forEach((stop) => stop());
+  }, [qc, scopeKey, JSON.stringify(opts)]);
+
+  return useQuery({
+    queryKey: key,
+    queryFn: () => Promise.resolve([]),
+    enabled: normalizedIds.length > 0,
+    staleTime: Infinity,
+  });
+}

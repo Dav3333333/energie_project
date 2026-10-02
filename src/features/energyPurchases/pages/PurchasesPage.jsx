@@ -10,20 +10,26 @@ import LoadingState from '@/components/common/LoadingState';
 import StatusBadge from '@/components/common/StatusBadge';
 import Button from '@/components/ui/Button';
 import { useAuth } from '@/features/auth/hooks/useAuth';
-import { usePurchasesAcrossScope } from '../hooks/usePurchases';
+import { usePurchasesAcrossScope, usePurchasesAcrossShops } from '../hooks/usePurchases';
 import { formatCurrency, formatDateTime } from '@/lib/formatters';
 import { ROLES } from '@/constants/roles';
 
 export default function PurchasesPage() {
-  const { profile, galleryIds } = useAuth();
+  const { profile, galleryIds, shopIds } = useAuth();
   const navigate = useNavigate();
-  const scopeGalleryIds = profile?.role === ROLES.SUPER_ADMIN ? null : (galleryIds ?? []);
+  const isShopOwner = profile?.role === ROLES.SHOP_OWNER;
+  const scopeGalleryIds = isShopOwner ? [] : profile?.role === ROLES.SUPER_ADMIN ? null : (galleryIds ?? []);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
-  const { data: purchases, isLoading } = usePurchasesAcrossScope(scopeGalleryIds, {
+  const galleryPurchases = usePurchasesAcrossScope(scopeGalleryIds, {
     status: statusFilter || undefined,
   });
+  const shopPurchases = usePurchasesAcrossShops(isShopOwner ? (shopIds ?? profile?.shopIds ?? []) : [], {
+    status: statusFilter || undefined,
+  });
+  const purchases = isShopOwner ? shopPurchases.data : galleryPurchases.data;
+  const isLoading = isShopOwner ? shopPurchases.isLoading : galleryPurchases.isLoading;
 
   const filtered = useMemo(() => {
     const s = search.trim().toLowerCase();
@@ -41,7 +47,7 @@ export default function PurchasesPage() {
     <AppShell title="Achats kWh">
       <PageHeader
         title="Achats kWh"
-        subtitle={`${filtered.length} résultat(s)`}
+        subtitle={isShopOwner ? `Achats de vos boutiques · ${filtered.length} résultat(s)` : `${filtered.length} résultat(s)`}
         actions={
           canCreate && (
             <Button size="sm" onClick={() => navigate('/energy-purchases/new')}>
@@ -80,7 +86,7 @@ export default function PurchasesPage() {
           <EmptyState
             icon={<ShoppingCart size={28} />}
             title="Aucun achat"
-            description="Enregistrez votre premier achat de kWh."
+            description={isShopOwner ? 'Aucun achat n’a encore été enregistré pour vos boutiques.' : 'Enregistrez votre premier achat de kWh.'}
           />
         ) : (
           filtered.map((p) => (

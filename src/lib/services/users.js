@@ -287,13 +287,25 @@ export async function archiveManagedUser({ targetUid, reason, actorUserId, actor
   return { uid: targetUid, previous };
 }
 
-export async function listUsersByGallery(galleryId = null) {
-  const constraints = [fb.collection(fb.db, 'users')];
-  if (galleryId) constraints.push(fb.where('galleryIds', 'array-contains', galleryId));
-  constraints.push(fb.limit(500));
-  const usersQ = fb.query(...constraints);
-  const snap = await fb.getDocs(usersQ);
-  return snap.docs.map((d) => {
+export async function listUsersByGalleries(galleryIds = null) {
+  const usersCollection = fb.collection(fb.db, 'users');
+  let docs;
+  if (Array.isArray(galleryIds) && galleryIds.length) {
+    const chunks = [];
+    for (let index = 0; index < galleryIds.length; index += 30) {
+      chunks.push(galleryIds.slice(index, index + 30));
+    }
+    const snapshots = await Promise.all(chunks.map((galleryChunk) => fb.getDocs(fb.query(
+      usersCollection,
+      fb.where('galleryIds', 'array-contains-any', galleryChunk),
+      fb.limit(500),
+    ))));
+    docs = [...new Map(snapshots.flatMap((snapshot) => snapshot.docs).map((docSnap) => [docSnap.id, docSnap])).values()];
+  } else {
+    const snap = await fb.getDocs(fb.query(usersCollection, fb.limit(500)));
+    docs = snap.docs;
+  }
+  return docs.map((d) => {
     const data = d.data();
     return {
       uid: data.uid ?? d.id,
