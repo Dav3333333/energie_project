@@ -100,8 +100,15 @@ img {
     padding-right: var(--sar);
   }
 
+  .app-shell-viewport {
+    height: 100vh;
+    height: 100dvh;
+  }
+
   /* Conteneur scrollable principal (sous TopBar, au-dessus de BottomNav) */
   .app-scroll {
+    min-height: 0;
+    flex: 1 1 auto;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;

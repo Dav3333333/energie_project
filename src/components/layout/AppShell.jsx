@@ -26,7 +26,7 @@ export default function AppShell({
   const handleBack = onBack ?? (() => navigate(-1));
 
   return (
-    <div className="flex flex-col min-h-dvh bg-[var(--c-bg)]">
+    <div className="app-shell-viewport flex min-h-0 flex-col overflow-hidden bg-[var(--c-bg)]">
       <TopBar
         title={title}
         showBack={showBack}
@@ -39,7 +39,7 @@ export default function AppShell({
 
       <main
         className={[
-          'flex-1 app-scroll screen-pad',
+          'min-h-0 flex-1 app-scroll screen-pad',
           isMobile
             ? 'above-bottomnav pt-[var(--scroll-top-offset)]'
             : 'pt-[var(--scroll-top-offset)] pb-8',
