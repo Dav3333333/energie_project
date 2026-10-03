@@ -5,19 +5,12 @@ export async function createShop({ input, actorUserId, actorRole }) {
   const gallerySnap = await fb.getDoc(fb.doc(fb.db, 'galleries', input.galleryId));
   if (!gallerySnap.exists()) throw new AppError(ERR.NOT_FOUND, 'Galerie introuvable.');
 
-  const dup = await fb.getDocs(fb.query(
-    fb.collection(fb.db, 'shops'),
-    fb.where('galleryId', '==', input.galleryId),
-    fb.where('code', '==', input.code),
-    fb.limit(1),
-  ));
-  if (!dup.empty) throw new AppError(ERR.ALREADY_EXISTS, 'Code boutique déjà utilisé.');
-
   const now = fb.serverTimestamp();
   const ref = fb.doc(fb.collection(fb.db, 'shops'));
+  const code = `SHOP-${ref.id.toUpperCase()}`;
   const data = {
     galleryId: input.galleryId,
-    name: input.name, code: input.code,
+    name: input.name, code,
     description: input.description ?? null, location: input.location ?? null,
     ownerIds: input.ownerIds ?? [], workerIds: input.workerIds ?? [], meterIds: [],
     status: 'ACTIVE',
@@ -37,7 +30,7 @@ export async function createShop({ input, actorUserId, actorRole }) {
   await writeAuditLog({
     action: AUDIT_ACTIONS.SHOP_CREATED,
     entityType: 'shop', entityId: ref.id, galleryId: input.galleryId, shopId: ref.id,
-    actorUserId, actorRole, newData: { name: input.name, code: input.code },
+    actorUserId, actorRole, newData: { name: input.name, code },
   });
   return { id: ref.id, ...data };
 }

@@ -2,15 +2,11 @@ import { fb, AppError, ERR } from './base';
 import { writeAuditLog, AUDIT_ACTIONS } from './audit';
 
 export async function createGallery({ input, actorUserId, actorRole }) {
-  const dup = await fb.getDocs(
-    fb.query(fb.collection(fb.db, 'galleries'), fb.where('code', '==', input.code), fb.limit(1)),
-  );
-  if (!dup.empty) throw new AppError(ERR.ALREADY_EXISTS, 'Ce code de galerie existe déjà.');
-
   const now = fb.serverTimestamp();
   const ref = fb.doc(fb.collection(fb.db, 'galleries'));
+  const code = `GAL-${ref.id.toUpperCase()}`;
   const data = {
-    name: input.name, code: input.code,
+    name: input.name, code,
     address: input.address ?? '', city: input.city ?? '', country: input.country ?? '',
     phone: input.phone ?? null, email: input.email ?? null,
     currency: input.currency,
@@ -27,7 +23,7 @@ export async function createGallery({ input, actorUserId, actorRole }) {
     action: AUDIT_ACTIONS.GALLERY_CREATED,
     entityType: 'gallery', entityId: ref.id,
     galleryId: ref.id, actorUserId, actorRole,
-    newData: { name: input.name, code: input.code },
+    newData: { name: input.name, code },
   });
   return { id: ref.id, ...data };
 }

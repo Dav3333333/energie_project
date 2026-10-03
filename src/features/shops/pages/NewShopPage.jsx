@@ -86,7 +86,6 @@ export default function NewShopPage() {
             </label>
           )}
           <Input label="Nom" error={errors.name?.message} {...register('name')} />
-          <Input label="Code" error={errors.code?.message} {...register('code')} />
           <Input label="Emplacement" error={errors.location?.message} {...register('location')} />
           <Input label="Description" error={errors.description?.message} {...register('description')} />
           <Input

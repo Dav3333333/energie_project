@@ -2,11 +2,6 @@ import { z } from 'zod';
 
 export const galleryCreateSchema = z.object({
   name: z.string().min(2, 'Nom requis (2 caractères min.).').max(120),
-  code: z
-    .string()
-    .min(2, 'Code requis.')
-    .max(30)
-    .regex(/^[A-Z0-9-]+$/, 'Majuscules, chiffres et tiret uniquement.'),
   address: z.string().max(200).optional().or(z.literal('')),
   city: z.string().max(80).optional().or(z.literal('')),
   country: z.string().max(80).optional().or(z.literal('')),

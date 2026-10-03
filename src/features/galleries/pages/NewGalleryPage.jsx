@@ -51,7 +51,6 @@ export default function NewGalleryPage() {
       >
         <form id="gallery-form" onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
           <Input label="Nom" error={errors.name?.message} {...register('name')} />
-          <Input label="Code" hint="Ex. GL-01" error={errors.code?.message} {...register('code')} />
           <Input label="Adresse" error={errors.address?.message} {...register('address')} />
           <Input label="Ville" error={errors.city?.message} {...register('city')} />
           <Input label="Pays" error={errors.country?.message} {...register('country')} />
