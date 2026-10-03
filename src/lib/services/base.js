@@ -1,7 +1,7 @@
 import { db } from '@/lib/firebase/firebase';
 import {
   doc, getDoc, setDoc, updateDoc, addDoc, collection, serverTimestamp,
-  runTransaction, Timestamp, query, where, getDocs, orderBy, limit,
+  runTransaction, Timestamp, query, where, getDocs, orderBy, limit, writeBatch,
 } from 'firebase/firestore';
 
 export class AppError extends Error {
@@ -39,5 +39,5 @@ export function toMillis(v) {
 export const fb = {
   db, doc, getDoc, setDoc, updateDoc, addDoc, collection,
   serverTimestamp, runTransaction, Timestamp,
-  query, where, getDocs, orderBy, limit,
+  query, where, getDocs, orderBy, limit, writeBatch,
 };

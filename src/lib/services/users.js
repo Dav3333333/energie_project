@@ -127,6 +127,9 @@ export async function createManagedUser({
       tx.set(usernameRef, { uid, email, createdAt: now });
 
       for (const gid of galleryIds) {
+        tx.set(fb.doc(fb.db, `galleries/${gid}/members/${uid}`), {
+          uid, role, status: 'ACTIVE', createdAt: now, updatedAt: now,
+        });
         if (role === 'GALLERY_ADMIN') {
           tx.set(fb.doc(fb.db, `galleries/${gid}/admins/${uid}`), {
             userId: uid, assignedAt: now, assignedByUserId: createdByUserId,
@@ -215,19 +218,29 @@ export async function updateManagedUser({
 
   await fb.runTransaction(fb.db, async (tx) => {
     tx.update(ref, update);
-    if (allowPrivilegedChange && update.role) {
+    if (allowPrivilegedChange && (update.role || update.galleryIds)) {
       const newGalleryIds = update.galleryIds ?? previous.galleryIds ?? [];
+      const newRole = update.role ?? previous.role;
       for (const galleryId of new Set([...(previous.galleryIds ?? []), ...newGalleryIds])) {
+        if (newRole === 'SUPER_ADMIN' || !newGalleryIds.includes(galleryId)) {
+          tx.delete(fb.doc(fb.db, `galleries/${galleryId}/members/${targetUid}`));
+        }
         tx.delete(fb.doc(fb.db, `galleries/${galleryId}/admins/${targetUid}`));
         tx.delete(fb.doc(fb.db, `galleries/${galleryId}/technicians/${targetUid}`));
       }
-      for (const galleryId of newGalleryIds) {
-        if (update.role === 'GALLERY_ADMIN') {
+      if (newRole !== 'SUPER_ADMIN') for (const galleryId of newGalleryIds) {
+        tx.set(fb.doc(fb.db, `galleries/${galleryId}/members/${targetUid}`), {
+          uid: targetUid,
+          role: newRole,
+          status: update.status ?? previous.status,
+          updatedAt: update.updatedAt,
+        });
+        if (newRole === 'GALLERY_ADMIN') {
           tx.set(fb.doc(fb.db, `galleries/${galleryId}/admins/${targetUid}`), {
             userId: targetUid, assignedAt: update.updatedAt, assignedByUserId: actorUserId,
           });
         }
-        if (update.role === 'TECHNICIAN') {
+        if (newRole === 'TECHNICIAN') {
           tx.set(fb.doc(fb.db, `galleries/${galleryId}/technicians/${targetUid}`), {
             userId: targetUid, assignedAt: update.updatedAt, assignedByUserId: actorUserId,
           });
@@ -289,19 +302,18 @@ export async function archiveManagedUser({ targetUid, reason, actorUserId, actor
 
 export async function listUsersByGalleries(galleryIds = null) {
   const usersCollection = fb.collection(fb.db, 'users');
-  let docs;
+  let docs = [];
   if (Array.isArray(galleryIds) && galleryIds.length) {
-    // Une requête par galerie donne aux règles Firestore un filtre exact à
-    // vérifier pour chaque résultat (array-contains-any est moins explicite).
-    const snapshots = await Promise.all(galleryIds.map((galleryId) => fb.getDocs(fb.query(
-      usersCollection,
-      fb.where('galleryIds', 'array-contains', galleryId),
-      fb.limit(500),
-    ))));
-    docs = [...new Map(snapshots.flatMap((snapshot) => snapshot.docs).map((docSnap) => [docSnap.id, docSnap])).values()];
+    const memberships = await Promise.all(galleryIds.map((galleryId) => fb.getDocs(
+      fb.collection(fb.db, `galleries/${galleryId}/members`),
+    )));
+    const memberIds = [...new Set(memberships.flatMap((snapshot) => snapshot.docs.map((member) => member.id)))];
+    const userSnaps = await Promise.all(memberIds.map((uid) => fb.getDoc(fb.doc(fb.db, 'users', uid))));
+    docs = userSnaps.filter((snapshot) => snapshot.exists());
   } else {
     const snap = await fb.getDocs(fb.query(usersCollection, fb.limit(500)));
     docs = snap.docs;
+    await ensureGalleryMemberIndexes(docs);
   }
   return docs.map((d) => {
     const data = d.data();
@@ -316,4 +328,30 @@ export async function listUsersByGalleries(galleryIds = null) {
       shopIds: data.shopIds ?? [],
     };
   });
+}
+
+async function ensureGalleryMemberIndexes(userDocs) {
+  const membersByGallery = new Map();
+  for (const userDoc of userDocs) {
+    const user = userDoc.data();
+    if (user.role === 'SUPER_ADMIN') continue;
+    for (const galleryId of user.galleryIds ?? []) {
+      if (!membersByGallery.has(galleryId)) membersByGallery.set(galleryId, []);
+      membersByGallery.get(galleryId).push({ uid: user.uid ?? userDoc.id, role: user.role, status: user.status ?? 'ACTIVE' });
+    }
+  }
+
+  for (const [galleryId, members] of membersByGallery) {
+    const existing = await fb.getDocs(fb.collection(fb.db, `galleries/${galleryId}/members`));
+    const existingIds = new Set(existing.docs.map((member) => member.id));
+    const missing = members.filter((member) => !existingIds.has(member.uid));
+    for (let offset = 0; offset < missing.length; offset += 450) {
+      const batch = fb.writeBatch(fb.db);
+      for (const member of missing.slice(offset, offset + 450)) {
+        const ref = fb.doc(fb.db, `galleries/${galleryId}/members/${member.uid}`);
+        batch.set(ref, { ...member, createdAt: fb.serverTimestamp(), updatedAt: fb.serverTimestamp() });
+      }
+      await batch.commit();
+    }
+  }
 }

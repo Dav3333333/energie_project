@@ -148,11 +148,9 @@ service cloud.firestore {
         );
 
       allow delete: if false;
-      allow list: if isSuperAdmin() || (
-        isGalleryAdmin()
-        && resource.data.galleryIds is list
-        && resource.data.galleryIds.hasAny(myGalleryIds())
-      );
+      // Les admins de galerie passent par le sous-ensemble /galleries/{gid}/members.
+      // La collection users entière reste réservée au superadmin.
+      allow list: if isSuperAdmin();
     }
 
     // ================================================================
@@ -193,6 +191,17 @@ service cloud.firestore {
       match /admins/{adminUid} {
         allow read: if isSignedIn() && (isSuperAdmin() || gid in myGalleryIds());
         allow write: if isSignedIn() && (isSuperAdmin() || (isGalleryAdmin() && gid in myGalleryIds()));
+      }
+
+      match /members/{memberUid} {
+        allow read: if isActive() && (isSuperAdmin() || (isGalleryAdmin() && gid in myGalleryIds()));
+        allow create, update: if isActive()
+          && (isSuperAdmin() || (isGalleryAdmin() && gid in myGalleryIds()))
+          && request.resource.data.uid == memberUid
+          && existsAfter(/databases/$(database)/documents/users/$(memberUid))
+          && getAfter(/databases/$(database)/documents/users/$(memberUid)).data.galleryIds is list
+          && gid in getAfter(/databases/$(database)/documents/users/$(memberUid)).data.galleryIds;
+        allow delete: if isActive() && isSuperAdmin();
       }
 
       match /technicians/{techUid} {
