@@ -1,5 +1,6 @@
 import { fb, AppError, ERR } from './base';
 import { writeAuditLog, AUDIT_ACTIONS } from './audit';
+import { recalculateShopBalance } from './balances';
 
 export async function createShop({ input, actorUserId, actorRole }) {
   const gallerySnap = await fb.getDoc(fb.doc(fb.db, 'galleries', input.galleryId));
@@ -35,24 +36,26 @@ export async function createShop({ input, actorUserId, actorRole }) {
   return { id: ref.id, ...data };
 }
 
-export async function updateShop({ shopId, patch, actorUserId, actorRole }) {
-  const forbidden = [
-    'totalPurchasedKwh','totalConsumedKwh','remainingKwh','remainingAmount',
-    'averageDailyConsumptionKwh','estimatedDaysRemaining','estimatedDepletionDate',
-    'balanceStatus','activePricePerKwh','lastBalanceCalculatedAt',
-    'lastReadingAt','lastPurchaseAt',
-  ];
-  for (const f of forbidden) {
-    if (f in patch) throw new AppError(ERR.PERMISSION_DENIED, `Champ interdit : ${f}`);
+export async function updateShop({ shopId, patch, actorUserId, actorRole, actorGalleryIds = [] }) {
+  if (!['SUPER_ADMIN', 'GALLERY_ADMIN'].includes(actorRole)) {
+    throw new AppError(ERR.PERMISSION_DENIED, 'Action réservée aux administrateurs.');
+  }
+  const allowedFields = ['name', 'location', 'description', 'customPricePerKwh', 'lowCreditThresholdKwh', 'criticalCreditThresholdKwh'];
+  if (Object.keys(patch).some((field) => !allowedFields.includes(field))) {
+    throw new AppError(ERR.PERMISSION_DENIED, 'Les champs système de la boutique ne peuvent pas être modifiés ici.');
   }
 
   const ref = fb.doc(fb.db, 'shops', shopId);
   const snap = await fb.getDoc(ref);
   if (!snap.exists()) throw new AppError(ERR.NOT_FOUND, 'Boutique introuvable.');
+  if (actorRole === 'GALLERY_ADMIN' && !actorGalleryIds.includes(snap.data().galleryId)) {
+    throw new AppError(ERR.PERMISSION_DENIED, 'Vous pouvez modifier uniquement les boutiques de votre galerie.');
+  }
 
   await fb.updateDoc(ref, {
     ...patch, updatedAt: fb.serverTimestamp(), updatedByUserId: actorUserId,
   });
+  await recalculateShopBalance(shopId);
 
   await writeAuditLog({
     action: AUDIT_ACTIONS.SHOP_UPDATED,

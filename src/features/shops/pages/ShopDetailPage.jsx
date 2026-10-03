@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { Gauge, Plus } from 'lucide-react';
+import { Gauge, Pencil, Plus } from 'lucide-react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import AppShell from '@/components/layout/AppShell';
 import PageHeader from '@/components/common/PageHeader';
 import StatCard from '@/components/common/StatCard';
@@ -9,12 +11,47 @@ import EmptyState from '@/components/common/EmptyState';
 import LoadingState from '@/components/common/LoadingState';
 import StatusBadge from '@/components/common/StatusBadge';
 import Button from '@/components/ui/Button';
+import Input from '@/components/ui/Input';
 import { useShop } from '../hooks/useShops';
 import { useMetersByShop } from '@/features/meters/hooks/useMeters';
 import { useReadingsByShop } from '@/features/readings/hooks/useReadings';
 import { formatDateTime, formatKwh, formatCurrency } from '@/lib/formatters';
 import { useAuth } from '@/features/auth/hooks/useAuth';
-import { ROLES } from '@/constants/roles';
+import { shopUpdateSchema } from '../schemas/shopSchemas';
+import { callables, callableError } from '@/lib/firebase/callables';
+import { toast } from 'sonner';
+import { isGalleryManager } from '@/lib/permissions';
+
+function ShopEditForm({ shop, onDone }) {
+  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({
+    resolver: zodResolver(shopUpdateSchema),
+    defaultValues: {
+      name: shop.name ?? '', location: shop.location ?? '', description: shop.description ?? '',
+      customPricePerKwh: shop.customPricePerKwh ?? '',
+      lowCreditThresholdKwh: shop.lowCreditThresholdKwh ?? '',
+      criticalCreditThresholdKwh: shop.criticalCreditThresholdKwh ?? '',
+    },
+  });
+  const submit = async (values) => {
+    try {
+      await callables.updateShop({ shopId: shop.id, patch: values });
+      toast.success('Boutique modifiée.');
+      onDone();
+    } catch (error) { toast.error(callableError(error).message); }
+  };
+  return (
+    <form onSubmit={handleSubmit(submit)} className="mt-4 space-y-3 rounded-xl border border-[var(--c-border)] p-4">
+      <h2 className="font-semibold">Modifier la boutique</h2>
+      <Input label="Nom" error={errors.name?.message} {...register('name')} />
+      <Input label="Emplacement" error={errors.location?.message} {...register('location')} />
+      <Input label="Description" error={errors.description?.message} {...register('description')} />
+      <Input label="Prix kWh personnalisé (vide = tarif galerie)" type="number" min="0" step="0.01" error={errors.customPricePerKwh?.message} {...register('customPricePerKwh')} />
+      <Input label="Seuil crédit faible (kWh, vide = défaut)" type="number" min="0" step="0.1" error={errors.lowCreditThresholdKwh?.message} {...register('lowCreditThresholdKwh')} />
+      <Input label="Seuil critique (kWh, vide = défaut)" type="number" min="0" step="0.1" error={errors.criticalCreditThresholdKwh?.message} {...register('criticalCreditThresholdKwh')} />
+      <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={onDone}>Annuler</Button><Button type="submit" loading={isSubmitting}>Enregistrer</Button></div>
+    </form>
+  );
+}
 
 const TABS = ['Aperçu', 'Compteurs', 'Relevés'];
 
@@ -22,8 +59,9 @@ export default function ShopDetailPage() {
   const { shopId } = useParams();
   const navigate = useNavigate();
   const [tab, setTab] = useState('Aperçu');
+  const [editing, setEditing] = useState(false);
   const { profile } = useAuth();
-  const canCreateMeter = [ROLES.SUPER_ADMIN, ROLES.GALLERY_ADMIN].includes(profile?.role);
+  const canManage = isGalleryManager(profile);
 
   const { data: shop, isLoading } = useShop(shopId);
   const { data: meters } = useMetersByShop(shopId);
@@ -39,6 +77,16 @@ export default function ShopDetailPage() {
         subtitle={`${shop.code} · ${shop.location || '—'}`}
         actions={<StatusBadge status={shop.balanceStatus} />}
       />
+
+      {canManage && (
+        <div className="mb-4 flex justify-end">
+          <Button size="sm" onClick={() => setEditing((value) => !value)}>
+            <Pencil size={16} /> Modifier la boutique
+          </Button>
+        </div>
+      )}
+
+      {editing && canManage && <ShopEditForm shop={shop} onDone={() => setEditing(false)} />}
 
       <div className="grid grid-cols-2 gap-3">
         <StatCard label="Crédit restant" value={formatKwh(shop.remainingKwh)} />
@@ -87,7 +135,7 @@ export default function ShopDetailPage() {
 
         {tab === 'Compteurs' && (
           <>
-            {canCreateMeter && <div className="flex justify-end">
+            {canManage && <div className="flex justify-end">
               <Button size="sm" onClick={() => navigate(`/meters/new?shopId=${shopId}`)}>
                 <Plus size={16} /> Nouveau compteur
               </Button>

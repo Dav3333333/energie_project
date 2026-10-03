@@ -291,13 +291,11 @@ export async function listUsersByGalleries(galleryIds = null) {
   const usersCollection = fb.collection(fb.db, 'users');
   let docs;
   if (Array.isArray(galleryIds) && galleryIds.length) {
-    const chunks = [];
-    for (let index = 0; index < galleryIds.length; index += 30) {
-      chunks.push(galleryIds.slice(index, index + 30));
-    }
-    const snapshots = await Promise.all(chunks.map((galleryChunk) => fb.getDocs(fb.query(
+    // Une requête par galerie donne aux règles Firestore un filtre exact à
+    // vérifier pour chaque résultat (array-contains-any est moins explicite).
+    const snapshots = await Promise.all(galleryIds.map((galleryId) => fb.getDocs(fb.query(
       usersCollection,
-      fb.where('galleryIds', 'array-contains-any', galleryChunk),
+      fb.where('galleryIds', 'array-contains', galleryId),
       fb.limit(500),
     ))));
     docs = [...new Map(snapshots.flatMap((snapshot) => snapshot.docs).map((docSnap) => [docSnap.id, docSnap])).values()];

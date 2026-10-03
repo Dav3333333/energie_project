@@ -31,21 +31,15 @@ async function invoke(fn, ...args) {
   return { data };
 }
 
-// Cache du profil pour éviter des lectures répétées.
-let _profileCache = null;
+// Toujours relire le profil courant : le cache global pouvait conserver
+// l'ancien utilisateur ou ses anciens droits après une déconnexion/connexion.
 async function getActorProfile() {
-  if (_profileCache) return _profileCache;
   const uid = currentActor();
   const { getDoc, doc } = await import('firebase/firestore');
   const { db } = await import('./firebase');
   const snap = await getDoc(doc(db, 'users', uid));
-  _profileCache = snap.exists() ? { ...snap.data(), uid } : null;
-  return _profileCache;
+  return snap.exists() ? { ...snap.data(), uid } : null;
 }
-export function invalidateActorProfileCache() {
-  _profileCache = null;
-}
-
 // ---------------------------------------------------------------- Users
 async function _userCtx() {
   const actor = await getActorProfile();
@@ -88,7 +82,7 @@ export const callables = {
       return { ok: true, uid: payload.targetUid };
     }),
 
-  listUsersByGallery: (payload) =>
+  listUsersByGallery: () =>
     invoke(async () => {
       const actor = await getActorProfile();
       if (!actor || actor.status !== 'ACTIVE') throw new Error('permission-denied');

@@ -10,6 +10,11 @@ export function isSuperAdmin(profile) {
   return profile?.role === ROLES.SUPER_ADMIN;
 }
 
+export function isGalleryManager(profile) {
+  const role = String(profile?.role ?? '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+  return [ROLES.SUPER_ADMIN, ROLES.GALLERY_ADMIN, 'ADMIN_GALLERIE', 'SUPERADMIN'].includes(role);
+}
+
 export function hasGalleryAccess(profile, galleryId) {
   if (!profile || profile.status !== 'ACTIVE') return false;
   if (profile.role === ROLES.SUPER_ADMIN) return true;

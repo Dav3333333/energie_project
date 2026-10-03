@@ -65,7 +65,7 @@ export async function createMeter({ input, actorUserId, actorRole }) {
   return { id: ref.id, ...data };
 }
 
-export async function updateMeter({ meterId, patch, actorUserId, actorRole }) {
+export async function updateMeter({ meterId, patch, actorUserId, actorRole, actorGalleryIds = [] }) {
   if (!['SUPER_ADMIN', 'GALLERY_ADMIN'].includes(actorRole)) {
     throw new AppError(ERR.PERMISSION_DENIED, 'Seul un administrateur peut modifier un compteur.');
   }
@@ -76,6 +76,9 @@ export async function updateMeter({ meterId, patch, actorUserId, actorRole }) {
   const ref = fb.doc(fb.db, 'meters', meterId);
   const snap = await fb.getDoc(ref);
   if (!snap.exists()) throw new AppError(ERR.NOT_FOUND, 'Compteur introuvable.');
+  if (actorRole === 'GALLERY_ADMIN' && !actorGalleryIds.includes(snap.data().galleryId)) {
+    throw new AppError(ERR.PERMISSION_DENIED, 'Vous pouvez modifier uniquement les compteurs de votre galerie.');
+  }
 
   await fb.updateDoc(ref, {
     ...patch, updatedAt: fb.serverTimestamp(), updatedByUserId: actorUserId,

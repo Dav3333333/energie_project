@@ -181,7 +181,13 @@ service cloud.firestore {
       allow create: if isSignedIn()
         && request.resource.data.createdByUserId == uid()
         && request.resource.data.status == 'ACTIVE';
-      allow update: if isSignedIn() && (isSuperAdmin() || (isGalleryAdmin() && gid in myGalleryIds()));
+      allow update: if isSignedIn()
+        && (isSuperAdmin() || (isGalleryAdmin() && gid in myGalleryIds()))
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'name', 'address', 'city', 'country', 'phone', 'email', 'currency',
+          'defaultPricePerKwh', 'lowCreditThresholdKwh', 'criticalCreditThresholdKwh',
+          'updatedAt', 'updatedByUserId'
+        ]);
       allow delete: if false;
 
       match /admins/{adminUid} {
@@ -227,16 +233,15 @@ service cloud.firestore {
       allow update: if isSignedIn()
         && (isSuperAdmin()
           || (isGalleryAdmin() && resource.data.galleryId in myGalleryIds()))
-        // interdit la suppression des champs calculés hors service métier
-        && !(request.resource.data.diff(resource.data).affectedKeys()
-             .hasAny([
-               'totalPurchasedKwh','totalConsumedKwh','remainingKwh','remainingAmount',
-               'averageDailyConsumptionKwh','estimatedDaysRemaining',
-               'estimatedDepletionDate','balanceStatus','lastBalanceCalculatedAt',
-             ]) && false);
-      // NB : la protection réelle des champs calculés se fait par l'usage
-      // exclusif du service ShopService.recalculateBalance() qui est le seul à écrire.
-      // Firestore Rules ne sait pas vérifier un calcul de façon fiable.
+        && request.resource.data.galleryId == resource.data.galleryId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'name', 'location', 'description', 'customPricePerKwh',
+          'lowCreditThresholdKwh', 'criticalCreditThresholdKwh',
+          'totalPurchasedKwh', 'totalConsumedKwh', 'remainingKwh', 'remainingAmount',
+          'averageDailyConsumptionKwh', 'estimatedDaysRemaining', 'estimatedDepletionDate',
+          'balanceStatus', 'activePricePerKwh', 'lastBalanceCalculatedAt',
+          'lastReadingAt', 'lastPurchaseAt', 'updatedAt', 'updatedByUserId'
+        ]);
       allow delete: if false;
     }
 
@@ -276,7 +281,13 @@ service cloud.firestore {
         && (isSuperAdmin()
           || ((isGalleryAdmin() || isTechnician()) && resource.data.galleryId in myGalleryIds()))
         && request.resource.data.galleryId == resource.data.galleryId
-        && request.resource.data.shopId == resource.data.shopId;
+        && request.resource.data.shopId == resource.data.shopId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'name', 'serialNumber', 'description', 'lastTotalKwh', 'lastValidReadingId',
+          'lastReadingAt', 'totalPurchasedKwh', 'totalPurchaseAmount', 'totalConsumedKwh',
+          'remainingKwh', 'remainingAmount', 'currency', 'activePricePerKwh',
+          'balanceStatus', 'lastBalanceCalculatedAt', 'updatedAt', 'updatedByUserId'
+        ]);
       allow delete: if false;
     }
 

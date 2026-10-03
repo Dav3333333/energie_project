@@ -1,6 +1,9 @@
 import { useParams } from 'react-router-dom';
 import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { Gauge, Plus } from 'lucide-react';
+import { Pencil } from 'lucide-react';
 import AppShell from '@/components/layout/AppShell';
 import PageHeader from '@/components/common/PageHeader';
 import StatCard from '@/components/common/StatCard';
@@ -9,13 +12,57 @@ import LoadingState from '@/components/common/LoadingState';
 import TouchCard from '@/components/mobile/TouchCard';
 import StatusBadge from '@/components/common/StatusBadge';
 import Button from '@/components/ui/Button';
+import Input from '@/components/ui/Input';
 import { useGallery } from '../hooks/useGalleries';
 import { useShopsByGallery } from '@/features/shops/hooks/useShops';
 import { useMetersByGallery } from '@/features/meters/hooks/useMeters';
-import { ROLES } from '@/constants/roles';
 import { useAuth } from '@/features/auth/hooks/useAuth';
 import { formatCurrency } from '@/lib/formatters';
 import { Link, useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
+import { callables, callableError } from '@/lib/firebase/callables';
+import { galleryUpdateSchema } from '../schemas/gallerySchemas';
+import { isGalleryManager } from '@/lib/permissions';
+
+function GalleryEditForm({ gallery, onDone }) {
+  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({
+    resolver: zodResolver(galleryUpdateSchema),
+    defaultValues: {
+      name: gallery.name ?? '', address: gallery.address ?? '', city: gallery.city ?? '',
+      country: gallery.country ?? '', phone: gallery.phone ?? '', email: gallery.email ?? '',
+      currency: gallery.currency ?? 'USD', defaultPricePerKwh: gallery.defaultPricePerKwh ?? 0,
+      lowCreditThresholdKwh: gallery.lowCreditThresholdKwh ?? 50,
+      criticalCreditThresholdKwh: gallery.criticalCreditThresholdKwh ?? 10,
+    },
+  });
+  const submit = async (values) => {
+    try {
+      await callables.updateGallery({ galleryId: gallery.id, patch: values });
+      toast.success('Galerie modifiée.');
+      onDone();
+    } catch (error) { toast.error(callableError(error).message); }
+  };
+  return (
+    <form onSubmit={handleSubmit(submit)} className="mt-4 space-y-3 rounded-xl border border-[var(--c-border)] p-4">
+      <h2 className="font-semibold">Modifier la galerie</h2>
+      <Input label="Nom" error={errors.name?.message} {...register('name')} />
+      <Input label="Adresse" error={errors.address?.message} {...register('address')} />
+      <Input label="Ville" error={errors.city?.message} {...register('city')} />
+      <Input label="Pays" error={errors.country?.message} {...register('country')} />
+      <Input label="Téléphone" error={errors.phone?.message} {...register('phone')} />
+      <Input label="Email" type="email" error={errors.email?.message} {...register('email')} />
+      <label className="block"><span className="text-sm font-medium mb-1.5 block">Devise</span>
+        <select {...register('currency')} className="w-full min-h-touch px-3 rounded-xl bg-[var(--c-surface)] border border-[var(--c-border)]">
+          <option value="USD">USD</option><option value="CDF">CDF</option>
+        </select>
+      </label>
+      <Input label="Prix kWh par défaut" type="number" min="0" step="0.01" error={errors.defaultPricePerKwh?.message} {...register('defaultPricePerKwh')} />
+      <Input label="Seuil crédit faible (kWh)" type="number" min="0" step="0.1" error={errors.lowCreditThresholdKwh?.message} {...register('lowCreditThresholdKwh')} />
+      <Input label="Seuil critique (kWh)" type="number" min="0" step="0.1" error={errors.criticalCreditThresholdKwh?.message} {...register('criticalCreditThresholdKwh')} />
+      <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={onDone}>Annuler</Button><Button type="submit" loading={isSubmitting}>Enregistrer</Button></div>
+    </form>
+  );
+}
 
 const TABS = ['Boutiques', 'Compteurs', 'Infos', 'Tarifs'];
 
@@ -23,8 +70,9 @@ export default function GalleryDetailPage() {
   const { galleryId } = useParams();
   const navigate = useNavigate();
   const [tab, setTab] = useState('Boutiques');
+  const [editing, setEditing] = useState(false);
   const { profile } = useAuth();
-  const canManageMeters = [ROLES.SUPER_ADMIN, ROLES.GALLERY_ADMIN].includes(profile?.role);
+  const canManage = isGalleryManager(profile);
 
   const { data: gallery, isLoading } = useGallery(galleryId);
   const { data: shops } = useShopsByGallery(galleryId, { status: 'ACTIVE' });
@@ -46,6 +94,16 @@ export default function GalleryDetailPage() {
         subtitle={`${gallery.code} · ${gallery.city || '—'}`}
         actions={<StatusBadge status={gallery.status} />}
       />
+
+      {canManage && (
+        <div className="mb-4 flex justify-end">
+          <Button size="sm" onClick={() => setEditing((value) => !value)}>
+            <Pencil size={16} /> Modifier la galerie
+          </Button>
+        </div>
+      )}
+
+      {editing && canManage && <GalleryEditForm gallery={gallery} onDone={() => setEditing(false)} />}
 
       <div className="grid grid-cols-2 gap-3">
         <StatCard label="Boutiques actives" value={shops?.length ?? 0} />
@@ -115,7 +173,7 @@ export default function GalleryDetailPage() {
 
         {tab === 'Compteurs' && (
           <div className="space-y-3">
-            {canManageMeters && (
+            {canManage && (
               <div className="flex justify-end">
                 <Button size="sm" onClick={() => navigate(`/meters/new?galleryId=${galleryId}&type=MAIN`)}>
                   <Plus size={16} /> Nouveau compteur général

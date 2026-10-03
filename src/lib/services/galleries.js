@@ -28,11 +28,24 @@ export async function createGallery({ input, actorUserId, actorRole }) {
   return { id: ref.id, ...data };
 }
 
-export async function updateGallery({ galleryId, patch, actorUserId, actorRole }) {
+export async function updateGallery({ galleryId, patch, actorUserId, actorRole, actorGalleryIds = [] }) {
+  if (!['SUPER_ADMIN', 'GALLERY_ADMIN'].includes(actorRole)) {
+    throw new AppError(ERR.PERMISSION_DENIED, 'Action réservée aux administrateurs.');
+  }
   const ref = fb.doc(fb.db, 'galleries', galleryId);
   const snap = await fb.getDoc(ref);
   if (!snap.exists()) throw new AppError(ERR.NOT_FOUND, 'Galerie introuvable.');
   const previous = snap.data();
+  if (actorRole === 'GALLERY_ADMIN' && !(actorGalleryIds ?? []).includes(galleryId)) {
+    throw new AppError(ERR.PERMISSION_DENIED, 'Vous pouvez modifier uniquement votre galerie.');
+  }
+  const allowedFields = [
+    'name', 'address', 'city', 'country', 'phone', 'email', 'currency',
+    'defaultPricePerKwh', 'lowCreditThresholdKwh', 'criticalCreditThresholdKwh',
+  ];
+  if (Object.keys(patch).some((field) => !allowedFields.includes(field))) {
+    throw new AppError(ERR.PERMISSION_DENIED, 'Les champs système de la galerie ne peuvent pas être modifiés ici.');
+  }
 
   await fb.updateDoc(ref, {
     ...patch, updatedAt: fb.serverTimestamp(), updatedByUserId: actorUserId,
