@@ -2,9 +2,12 @@ import { fb, AppError, ERR } from './base';
 import { writeAuditLog, AUDIT_ACTIONS } from './audit';
 import { generateMeterCode } from './counters';
 
-export async function createMeter({ input, actorUserId, actorRole }) {
+export async function createMeter({ input, actorUserId, actorRole, actorGalleryIds = [] }) {
   if (!['SUPER_ADMIN', 'GALLERY_ADMIN'].includes(actorRole)) {
     throw new AppError(ERR.PERMISSION_DENIED, 'Seul un administrateur peut créer un compteur.');
+  }
+  if (actorRole === 'GALLERY_ADMIN' && !actorGalleryIds.includes(input.galleryId)) {
+    throw new AppError(ERR.PERMISSION_DENIED, 'Vous pouvez créer un compteur uniquement dans votre galerie.');
   }
   let shop = null;
   if (input.type === 'SUB_METER') {

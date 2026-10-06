@@ -246,6 +246,7 @@ service cloud.firestore {
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'name', 'location', 'description', 'customPricePerKwh',
           'lowCreditThresholdKwh', 'criticalCreditThresholdKwh',
+          'meterIds',
           'totalPurchasedKwh', 'totalConsumedKwh', 'remainingKwh', 'remainingAmount',
           'averageDailyConsumptionKwh', 'estimatedDaysRemaining', 'estimatedDepletionDate',
           'balanceStatus', 'activePricePerKwh', 'lastBalanceCalculatedAt',
